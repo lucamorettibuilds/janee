@@ -4,6 +4,9 @@
  */
 
 import { generateToken } from './crypto';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 export interface Session {
   id: string;
@@ -18,6 +21,57 @@ export interface Session {
 
 export class SessionManager {
   private sessions: Map<string, Session> = new Map();
+  private persistFile: string;
+
+  constructor(persistFile?: string) {
+    this.persistFile = persistFile || path.join(os.homedir(), '.janee', 'sessions.json');
+    this.load();
+  }
+
+  /**
+   * Load sessions from file
+   */
+  private load(): void {
+    if (!fs.existsSync(this.persistFile)) {
+      return;
+    }
+
+    try {
+      const data = fs.readFileSync(this.persistFile, 'utf8');
+      const sessions = JSON.parse(data) as Array<Omit<Session, 'createdAt' | 'expiresAt'> & {
+        createdAt: string;
+        expiresAt: string;
+      }>;
+
+      for (const s of sessions) {
+        this.sessions.set(s.id, {
+          ...s,
+          createdAt: new Date(s.createdAt),
+          expiresAt: new Date(s.expiresAt)
+        });
+      }
+    } catch (error) {
+      console.error('Warning: Failed to load sessions:', error);
+    }
+  }
+
+  /**
+   * Save sessions to file
+   */
+  private save(): void {
+    const sessions = Array.from(this.sessions.values()).map(s => ({
+      ...s,
+      createdAt: s.createdAt.toISOString(),
+      expiresAt: s.expiresAt.toISOString()
+    }));
+
+    const dir = path.dirname(this.persistFile);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    }
+
+    fs.writeFileSync(this.persistFile, JSON.stringify(sessions, null, 2), { mode: 0o600 });
+  }
 
   /**
    * Create a new session for a capability
@@ -44,10 +98,12 @@ export class SessionManager {
     };
 
     this.sessions.set(id, session);
+    this.save();
 
     // Schedule cleanup
     setTimeout(() => {
       this.sessions.delete(id);
+      this.save();
     }, ttlSeconds * 1000);
 
     return session;
@@ -84,6 +140,7 @@ export class SessionManager {
 
     session.revoked = true;
     this.sessions.delete(sessionId);
+    this.save();
     return true;
   }
 
