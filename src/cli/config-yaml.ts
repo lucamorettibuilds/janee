@@ -10,10 +10,11 @@ import yaml from 'js-yaml';
 import { encryptSecret, decryptSecret, generateMasterKey } from '../core/crypto';
 
 export interface AuthConfig {
-  type: 'bearer' | 'hmac' | 'headers';
+  type: 'bearer' | 'hmac' | 'hmac-bybit' | 'hmac-okx' | 'headers';
   key?: string;
   apiKey?: string;
   apiSecret?: string;
+  passphrase?: string;  // For OKX
   headers?: Record<string, string>;
 }
 
@@ -97,7 +98,7 @@ export function loadYAMLConfig(): JaneeYAMLConfig {
       } catch {
         // Key is plaintext, use as-is
       }
-    } else if (svc.auth.type === 'hmac') {
+    } else if (svc.auth.type === 'hmac' || svc.auth.type === 'hmac-bybit' || svc.auth.type === 'hmac-okx') {
       if (svc.auth.apiKey) {
         try {
           svc.auth.apiKey = decryptSecret(svc.auth.apiKey, config.masterKey);
@@ -110,6 +111,13 @@ export function loadYAMLConfig(): JaneeYAMLConfig {
           svc.auth.apiSecret = decryptSecret(svc.auth.apiSecret, config.masterKey);
         } catch {
           // Key is plaintext, use as-is
+        }
+      }
+      if (svc.auth.passphrase) {
+        try {
+          svc.auth.passphrase = decryptSecret(svc.auth.passphrase, config.masterKey);
+        } catch {
+          // Passphrase is plaintext, use as-is
         }
       }
     }
@@ -129,12 +137,15 @@ export function saveYAMLConfig(config: JaneeYAMLConfig): void {
     const svc = service as ServiceConfig;
     if (svc.auth.type === 'bearer' && svc.auth.key) {
       svc.auth.key = encryptSecret(svc.auth.key, config.masterKey);
-    } else if (svc.auth.type === 'hmac') {
+    } else if (svc.auth.type === 'hmac' || svc.auth.type === 'hmac-bybit' || svc.auth.type === 'hmac-okx') {
       if (svc.auth.apiKey) {
         svc.auth.apiKey = encryptSecret(svc.auth.apiKey, config.masterKey);
       }
       if (svc.auth.apiSecret) {
         svc.auth.apiSecret = encryptSecret(svc.auth.apiSecret, config.masterKey);
+      }
+      if (svc.auth.passphrase) {
+        svc.auth.passphrase = encryptSecret(svc.auth.passphrase, config.masterKey);
       }
     }
   }

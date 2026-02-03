@@ -29,10 +29,11 @@ export interface Capability {
 export interface ServiceConfig {
   baseUrl: string;
   auth: {
-    type: 'bearer' | 'hmac' | 'headers';
+    type: 'bearer' | 'hmac' | 'hmac-bybit' | 'hmac-okx' | 'headers';
     key?: string;
     apiKey?: string;
     apiSecret?: string;
+    passphrase?: string;  // For OKX
     headers?: Record<string, string>;
   };
 }

@@ -88,7 +88,7 @@ export async function serveMCPCommand(): Promise<void> {
         } else if (serviceConfig.auth.type === 'headers' && serviceConfig.auth.headers) {
           Object.assign(headers, serviceConfig.auth.headers);
         } else if (serviceConfig.auth.type === 'hmac' && serviceConfig.auth.apiKey && serviceConfig.auth.apiSecret) {
-          // HMAC signature (MEXC-style)
+          // HMAC signature (MEXC-style) - query param signature
           const timestamp = Date.now().toString();
           targetUrl.searchParams.set('timestamp', timestamp);
           
@@ -100,6 +100,39 @@ export async function serveMCPCommand(): Promise<void> {
           
           targetUrl.searchParams.set('signature', signature);
           headers['X-MEXC-APIKEY'] = serviceConfig.auth.apiKey;
+        } else if (serviceConfig.auth.type === 'hmac-bybit' && serviceConfig.auth.apiKey && serviceConfig.auth.apiSecret) {
+          // Bybit-style HMAC - header signature
+          const timestamp = Date.now().toString();
+          const recvWindow = '5000';
+          const queryString = targetUrl.searchParams.toString();
+          
+          // Signature payload: timestamp + apiKey + recvWindow + queryString
+          const signPayload = timestamp + serviceConfig.auth.apiKey + recvWindow + queryString;
+          const signature = createHmac('sha256', serviceConfig.auth.apiSecret)
+            .update(signPayload)
+            .digest('hex');
+          
+          headers['X-BAPI-API-KEY'] = serviceConfig.auth.apiKey;
+          headers['X-BAPI-TIMESTAMP'] = timestamp;
+          headers['X-BAPI-SIGN'] = signature;
+          headers['X-BAPI-RECV-WINDOW'] = recvWindow;
+        } else if (serviceConfig.auth.type === 'hmac-okx' && serviceConfig.auth.apiKey && serviceConfig.auth.apiSecret && serviceConfig.auth.passphrase) {
+          // OKX-style HMAC - header signature with passphrase, base64 encoded
+          const timestamp = new Date().toISOString().slice(0, -1) + 'Z'; // ISO8601 format
+          const method = request.method.toUpperCase();
+          const requestPath = '/' + reqPath + (targetUrl.search || '');
+          const body = request.body || '';
+          
+          // Signature payload: timestamp + method + requestPath + body
+          const signPayload = timestamp + method + requestPath + body;
+          const signature = createHmac('sha256', serviceConfig.auth.apiSecret)
+            .update(signPayload)
+            .digest('base64');
+          
+          headers['OK-ACCESS-KEY'] = serviceConfig.auth.apiKey;
+          headers['OK-ACCESS-SIGN'] = signature;
+          headers['OK-ACCESS-TIMESTAMP'] = timestamp;
+          headers['OK-ACCESS-PASSPHRASE'] = serviceConfig.auth.passphrase;
         }
 
         // Set Content-Type for requests with body

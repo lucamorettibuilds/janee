@@ -51,11 +51,11 @@ export async function addCommand(
     }
 
     // Auth type
-    const authTypeInput = await rl.question('Auth type (bearer/hmac/headers): ');
-    const authType = authTypeInput.trim().toLowerCase() as 'bearer' | 'hmac' | 'headers';
+    const authTypeInput = await rl.question('Auth type (bearer/hmac/hmac-bybit/hmac-okx/headers): ');
+    const authType = authTypeInput.trim().toLowerCase() as 'bearer' | 'hmac' | 'hmac-bybit' | 'hmac-okx' | 'headers';
 
-    if (!['bearer', 'hmac', 'headers'].includes(authType)) {
-      console.error('❌ Invalid auth type. Must be bearer, hmac, or headers');
+    if (!['bearer', 'hmac', 'hmac-bybit', 'hmac-okx', 'headers'].includes(authType)) {
+      console.error('❌ Invalid auth type. Must be bearer, hmac, hmac-bybit, hmac-okx, or headers');
       rl.close();
       process.exit(1);
     }
@@ -80,7 +80,7 @@ export async function addCommand(
         type: 'bearer',
         key: apiKey
       };
-    } else if (authType === 'hmac') {
+    } else if (authType === 'hmac' || authType === 'hmac-bybit') {
       const apiKey = await rl.question('API key: ');
       const apiSecret = await rl.question('API secret: ');
 
@@ -91,9 +91,26 @@ export async function addCommand(
       }
 
       auth = {
-        type: 'hmac',
+        type: authType,
         apiKey: apiKey.trim(),
         apiSecret: apiSecret.trim()
+      };
+    } else if (authType === 'hmac-okx') {
+      const apiKey = await rl.question('API key: ');
+      const apiSecret = await rl.question('API secret: ');
+      const passphrase = await rl.question('Passphrase: ');
+
+      if (!apiKey || !apiSecret || !passphrase) {
+        console.error('❌ API key, secret, and passphrase are required for OKX');
+        rl.close();
+        process.exit(1);
+      }
+
+      auth = {
+        type: 'hmac-okx',
+        apiKey: apiKey.trim(),
+        apiSecret: apiSecret.trim(),
+        passphrase: passphrase.trim()
       };
     } else {
       // headers
