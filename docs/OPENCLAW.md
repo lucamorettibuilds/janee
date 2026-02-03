@@ -88,7 +88,7 @@ capabilities:
 ### 4. Install OpenClaw Plugin
 
 ```bash
-openclaw plugins install @openclaw/janee
+openclaw plugins install janee-openclaw-plugin
 ```
 
 ### 5. Enable Plugin in Agent Config

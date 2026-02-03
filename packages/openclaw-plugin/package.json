@@ -1,5 +1,5 @@
 {
-  "name": "@openclaw/janee",
+  "name": "janee-openclaw-plugin",
   "version": "0.1.0",
   "description": "OpenClaw plugin for Janee secrets management - provides secure API access through MCP",
   "main": "dist/index.js",

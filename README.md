@@ -126,7 +126,7 @@ janee init
 # Edit ~/.janee/config.yaml with your services
 
 # Install the OpenClaw plugin
-openclaw plugins install @openclaw/janee
+openclaw plugins install janee-openclaw-plugin
 ```
 
 Enable in your agent config:
@@ -308,7 +308,7 @@ Agent never touches the real key.
 
 Works with any agent that speaks MCP:
 
-- **OpenClaw** — Native plugin (`@openclaw/janee`)
+- **OpenClaw** — Native plugin (`janee-openclaw-plugin`)
 - **Claude Desktop** — MCP client
 - **Cursor** — MCP client
 - **Any MCP client** — just point at `janee serve`

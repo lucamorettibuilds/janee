@@ -12,7 +12,7 @@ All notable changes to Janee will be documented in this file.
 - **Encrypted Storage** — API keys encrypted with AES-256-GCM in `~/.janee/`
 - **Audit Logging** — All requests logged to `~/.janee/logs/`
 - **Session Management** — TTL-based sessions with revocation
-- **OpenClaw Plugin** — `@openclaw/janee` for native OpenClaw integration
+- **OpenClaw Plugin** — `janee-openclaw-plugin` for native OpenClaw integration
 
 ### Security
 
