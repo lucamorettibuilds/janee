@@ -1,19 +1,15 @@
 # Janee 🔐
 
-**Secrets management for AI agents — with LLM-adjudicated access control**
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![npm version](https://img.shields.io/npm/v/janee.svg)](https://www.npmjs.com/package/janee)
+**Secrets management for AI agents**
 
 ---
 
 ## The Problem
 
-AI agents need API access to be useful, but the current model is **"give them all your keys and hope they behave."**
+AI agents need API access to be useful. The current approach is to give them your keys and hope they behave.
 
-This is terrifying:
-- 🔓 Agents have full access to Stripe, AWS, databases
-- 📊 No audit trail of *why* something was accessed
+- 🔓 Agents have full access to Stripe, Gmail, databases
+- 📊 No audit trail of what was accessed or why
 - 🚫 No kill switch when things go wrong
 - 💉 One prompt injection away from disaster
 
@@ -21,63 +17,19 @@ This is terrifying:
 
 ## The Solution
 
-Janee is a **local proxy** that sits between your AI agents and your APIs:
+Janee is a local proxy that sits between your AI agents and your APIs:
 
-1. 🔒 Store your API keys (encrypted locally in `~/.janee/`)
-2. 🤖 Run `janee serve` (local proxy on `localhost:9119`)
-3. 🔗 Point your agent to `http://localhost:9119/<service>/...`
-4. 🛡️ Janee proxies requests with the real key (agent never sees it)
-5. 📋 Everything logged for audit
+1. **Store your API keys** — encrypted locally in `~/.janee/`
+2. **Run `janee serve`** — starts a local proxy
+3. **Point your agent at the proxy** — `localhost:9119/<service>/...`
+4. **Janee injects the real key** — agent never sees it
+5. **Everything is logged** — full audit trail
 
-**Your keys never leave your machine. Agents never see them. You stay in control.**
-
----
-
-## Quick Start with OpenClaw
-
-**If you're running an OpenClaw agent** (like Kit), add Janee protection in < 10 minutes:
-
-```bash
-# 1. Install Janee
-npm install -g janee
-
-# 2. Initialize
-janee init
-
-# 3. Add your services
-janee add gmail --url https://gmail.googleapis.com --key <your-key>
-janee add stripe --url https://api.stripe.com --key sk_live_xxx
-janee add bybit --url https://api.bybit.com --key <your-key>
-
-# 4. Start proxy
-janee serve
-```
-
-**5. Update your OpenClaw tools:**
-
-In your OpenClaw workspace, update tool configs to use Janee proxy:
-
-```yaml
-# Before:
-gmail:
-  baseUrl: https://gmail.googleapis.com
-  apiKey: <real-key>
-
-# After:
-gmail:
-  baseUrl: http://localhost:9119/gmail
-  apiKey: dummy  # Won't be used, Janee injects real key
-```
-
-**That's it!** Now:
-- ✅ Your agent never sees real keys
-- ✅ All API access logged to `~/.janee/logs/`
-- ✅ Keys encrypted at rest
-- ✅ You can `janee logs -f` to see what Kit is doing in real-time
+**Your keys stay on your machine. Agents never see them. You stay in control.**
 
 ---
 
-## Quick Start (General)
+## Quick Start
 
 ### Install
 
@@ -94,13 +46,6 @@ janee init
 ### Add a service
 
 ```bash
-janee add stripe
-# Prompts for base URL and API key
-```
-
-Or non-interactively:
-
-```bash
 janee add stripe --url https://api.stripe.com --key sk_live_xxx
 ```
 
@@ -110,126 +55,108 @@ janee add stripe --url https://api.stripe.com --key sk_live_xxx
 janee serve
 ```
 
-Output:
-```
-🔐 Janee proxy server running
+### Use it
 
-   Local:   http://localhost:9119
-
-Services configured:
-   • stripe → http://localhost:9119/stripe/...
-
-Press Ctrl+C to stop
-```
-
-### Use in your agent
-
-Instead of:
-```javascript
-const stripe = new Stripe('sk_live_xxx'); // ❌ Agent sees your key
-```
-
-Do:
-```javascript
-const stripe = new Stripe('dummy', {
-  host: 'localhost:9119',
-  protocol: 'http',
-  basePath: '/stripe'
-});
-// ✅ Agent never sees real key
-```
-
-Or with plain HTTP:
 ```bash
+# Instead of calling Stripe directly, call through Janee
 curl http://localhost:9119/stripe/v1/balance
+
+# Janee injects your real key, proxies the request, logs it
 ```
 
 ---
 
-## Features
+## Two Ways to Use Janee
 
-### ✅ Local & Secure
-- Keys stored encrypted in `~/.janee/` (AES-256-GCM)
-- Proxy runs on localhost (no external traffic)
-- You control when it runs (`janee serve`)
+### 1. HTTP Proxy
 
-### 🧠 Optional LLM Adjudication *(coming soon)*
-- Rules-first evaluation (fast)
-- LLM for ambiguous cases (bring your own OpenAI/Anthropic key)
-- Cost-optimized with caching
+Point any HTTP client at `localhost:9119/<service>/...`:
 
-### 📋 Full Audit Trail
-- Every request logged to `~/.janee/logs/`
-- JSONL format (one event per line)
-- View with `janee logs` or `janee logs -f` (tail)
+```javascript
+// Before
+const stripe = new Stripe('sk_live_xxx');
 
-### 🎯 Policies *(coming soon)*
-- Read-only mode
-- Endpoint allowlists/blocklists
-- Rate limiting
+// After
+const stripe = new Stripe('unused', {
+  host: 'localhost',
+  port: 9119,
+  protocol: 'http',
+  basePath: '/stripe'
+});
+```
+
+### 2. MCP Server (for AI agents)
+
+Janee exposes an [MCP](https://modelcontextprotocol.io) server for agents that support it:
+
+```bash
+janee serve --mcp
+```
+
+**MCP Tools:**
+
+| Tool | Description |
+|------|-------------|
+| `list_services` | Discover available APIs and their policies |
+| `execute` | Proxy an API request |
+| `get_http_access` | Get credentials for HTTP proxy |
+
+Agents discover what's available, then call APIs through Janee. Same audit trail, same protection.
+
+---
+
+## Configuration
+
+Config lives in `~/.janee/config.yaml`:
+
+```yaml
+server:
+  port: 9119
+
+services:
+  stripe:
+    baseUrl: https://api.stripe.com
+    auth:
+      type: bearer
+      key: sk_live_xxx  # encrypted at rest
+
+  github:
+    baseUrl: https://api.github.com
+    auth:
+      type: bearer
+      key: ghp_xxx
+
+capabilities:
+  stripe:
+    service: stripe
+    ttl: 1h
+    autoApprove: true
+
+  stripe_sensitive:
+    service: stripe
+    ttl: 5m
+    requiresReason: true
+```
+
+**Services** = Real APIs with real keys  
+**Capabilities** = What agents can request, with policies
 
 ---
 
 ## CLI Reference
 
-### `janee init`
-
-Initialize Janee configuration (creates `~/.janee/`)
-
-### `janee add <service>`
-
-Add a service to Janee.
-
-**Options:**
-- `-u, --url <url>` — Base URL of the service
-- `-k, --key <key>` — API key for the service
-- `-d, --description <desc>` — Description
-
-**Example:**
 ```bash
-janee add github \
-  --url https://api.github.com \
-  --key ghp_xxx \
-  --description "GitHub API"
+janee init              # Set up ~/.janee/
+janee add <service>     # Add a service
+janee list              # List configured services
+janee serve             # Start HTTP proxy
+janee serve --mcp       # Start MCP server
+janee logs              # View audit log
+janee logs -f           # Tail audit log
+janee sessions          # List active sessions
+janee revoke <id>       # Kill a session
+janee remove <service>  # Remove a service
 ```
-
-### `janee serve`
-
-Start the Janee proxy server.
-
-**Options:**
-- `-p, --port <port>` — Port to listen on (default: 9119)
-- `--no-llm` — Disable LLM adjudication
-
-**Example:**
-```bash
-janee serve --port 8080
-```
-
-### `janee list`
-
-List all configured services.
-
-### `janee logs`
-
-View audit logs.
-
-**Options:**
-- `-f, --follow` — Follow logs in real-time (like `tail -f`)
-- `-n, --lines <count>` — Number of recent logs to show (default: 20)
-- `-s, --service <name>` — Filter by service
-
-**Examples:**
-```bash
-janee logs                    # Show last 20 requests
-janee logs -n 100             # Show last 100 requests
-janee logs -s stripe          # Show only Stripe requests
-janee logs -f                 # Follow in real-time
-```
-
-### `janee remove <service>`
-
-Remove a service from Janee.
 
 ---
 
@@ -237,169 +164,69 @@ Remove a service from Janee.
 
 ```
 ┌─────────────┐      ┌──────────┐      ┌─────────┐
-│ AI Agent    │─────▶│  Janee   │─────▶│  Stripe │
-│             │ HTTP │  Proxy   │ key  │   API   │
+│  AI Agent   │─────▶│  Janee   │─────▶│  Stripe │
+│             │      │  Proxy   │      │   API   │
 └─────────────┘      └──────────┘      └─────────┘
-      ↓                    ↓
-   No key            Real key injected
-                     + logged
+      │                   │
+   No key           Injects key
+                    + logs request
 ```
 
-1. Agent makes request to `localhost:9119/stripe/v1/balance`
-2. Janee:
-   - Looks up `stripe` service config
-   - Decrypts the real API key
-   - Proxies request to `https://api.stripe.com/v1/balance`
-   - Injects `Authorization: Bearer sk_live_xxx` header
-   - Logs the request (service, method, path, status)
-3. Response returned to agent
-4. Agent never sees the real key
+1. Agent calls `localhost:9119/stripe/v1/customers`
+2. Janee looks up `stripe` config, decrypts the real key
+3. Proxies request to `api.stripe.com` with real key
+4. Logs: timestamp, service, method, path, status
+5. Returns response to agent
 
----
-
-## Integrations
-
-**Works with any agent that can accept a custom base URL.**
-
-### OpenClaw
-
-**First-class integration** — See [docs/OPENCLAW.md](docs/OPENCLAW.md) for complete guide.
-
-Quick start:
-```bash
-janee add gmail && janee add stripe && janee serve
-# Update OpenClaw tool configs to use localhost:9119/<service>
-```
-
-**Kit (Ross's main agent) uses Janee for all API access.**
-
-### Cursor
-
-```json
-// .cursorrules or workspace settings
-{
-  "apiEndpoints": {
-    "stripe": "http://localhost:9119/stripe"
-  }
-}
-```
-
-### Claude Desktop
-
-Configure base URLs in MCP server configs to point at Janee proxy.
-
-### LangChain (Python)
-
-```python
-# Configure SDK to use Janee proxy
-import stripe
-stripe.api_base = "http://localhost:9119/stripe"
-```
-
-### Any HTTP Client
-
-```bash
-# Just change the base URL
-curl http://localhost:9119/stripe/v1/balance
-curl http://localhost:9119/github/repos/user/repo
-```
-
-**The pattern:** Change base URL → that's it!
-
----
-
-## Design Philosophy
-
-**Frictionless integration is the goal.**
-
-- ✅ No SDK changes needed
-- ✅ No code changes in your agent
-- ✅ Just reconfigure base URLs
-- ✅ Works with any HTTP client
-- ✅ < 10 minutes to add to existing agent
-
-If an agent can make HTTP requests with a custom base URL, it can use Janee.
+Agent never touches the real key.
 
 ---
 
 ## Security
 
-### Key Storage
+- **Encryption**: Keys stored with AES-256-GCM
+- **Local only**: Proxy binds to localhost by default
+- **Audit log**: Every request logged to `~/.janee/logs/`
+- **Sessions**: Time-limited, revocable
+- **Kill switch**: `janee revoke` or just stop the server
 
-Keys are encrypted with AES-256-GCM using a master key generated at `janee init`.
+---
 
-**Config file:** `~/.janee/config.json` (permissions: `0600`)
+## Integrations
 
-```json
-{
-  "version": "0.1.0",
-  "masterKey": "<base64-encoded-256-bit-key>",
-  "services": [
-    {
-      "name": "stripe",
-      "baseUrl": "https://api.stripe.com",
-      "encryptedKey": "<base64-iv+tag+ciphertext>",
-      "createdAt": "2024-02-02T16:00:00Z"
-    }
-  ]
-}
-```
+Works with any agent that can make HTTP requests or speak MCP:
 
-### Network Security
-
-- Proxy listens on `localhost` only (not exposed to network)
-- Keys never leave your machine
-- No external traffic except proxied API calls
-
-### Audit Logs
-
-All requests logged to `~/.janee/logs/YYYY-MM-DD.jsonl`:
-
-```json
-{"id":"abc123","timestamp":"2024-02-02T16:30:45Z","service":"stripe","method":"GET","path":"/v1/balance","statusCode":200}
-```
+- **Claude Desktop** — MCP server
+- **Cursor** — MCP server or HTTP proxy
+- **OpenClaw** — HTTP proxy (MCP coming)
+- **LangChain** — HTTP proxy
+- **Any HTTP client** — just change the base URL
 
 ---
 
 ## Roadmap
 
-**✅ Phase 1: Core Proxy** (DONE)
-- CLI tool (`janee init`, `add`, `serve`)
-- Local HTTP proxy
-- Encrypted key storage
-- Audit logging
-
-**🚧 Phase 2: Intelligence** (IN PROGRESS)
-- LLM adjudication (OpenAI/Anthropic)
-- Policy engine (read-only, allowlists, blocklists)
-- Rate limiting
-
-**📋 Phase 3: Advanced**
-- Session tokens (request access with intent)
-- Web dashboard (optional, `janee dashboard`)
-- Multiple auth patterns (not just Bearer tokens)
-- Cloud version (managed hosting)
+- [x] Local HTTP proxy
+- [x] Encrypted key storage  
+- [x] Audit logging
+- [x] MCP server
+- [x] Session management
+- [ ] LLM adjudication (evaluate requests with AI)
+- [ ] Policy engine (rate limits, allowlists)
+- [ ] Cloud version (managed hosting)
 
 ---
 
 ## Contributing
 
-Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
 ## License
 
-MIT License - see [LICENSE](LICENSE)
+MIT
 
 ---
 
-## Team
-
-Built by [Ross Douglas](https://github.com/rsdouglas) and [David Wilson](https://github.com/daviddbwilson)
-
-Previously: Co-founded Cape Networks (acquired by HPE/Aruba)
-
----
-
-**Stop hoping your AI agents behave. Start controlling them.** 🔐
+**Stop giving AI agents your keys. Start controlling access.** 🔐
