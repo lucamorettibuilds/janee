@@ -1,5 +1,5 @@
 {
-  "name": "janee",
+  "name": "@true-and-useful/janee",
   "version": "0.1.0",
   "description": "Secrets management for AI agents via MCP",
   "main": "dist/index.js",

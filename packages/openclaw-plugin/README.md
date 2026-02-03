@@ -1,4 +1,4 @@
-# janee-openclaw-plugin
+# @true-and-useful/janee-openclaw
 
 OpenClaw plugin for [Janee](https://github.com/rsdouglas/janee) — secure secrets management for AI agents.
 
@@ -24,7 +24,7 @@ janee add
 # Or edit ~/.janee/config.yaml directly
 
 # Install the plugin in OpenClaw
-openclaw plugins install janee-openclaw-plugin
+openclaw plugins install @true-and-useful/janee-openclaw
 ```
 
 ## Configuration
@@ -83,7 +83,7 @@ await janee_execute({
 ```
 Agent calls janee_execute
     ↓
-OpenClaw Plugin (janee-openclaw-plugin)
+OpenClaw Plugin (@true-and-useful/janee-openclaw)
     ↓ spawns & connects via MCP
 Janee MCP Server (janee serve)
     ↓ decrypts key & makes HTTP call

@@ -22,7 +22,7 @@ OpenClaw agents often need access to multiple APIs — Gmail, Stripe, trading ex
 ### 1. Install Janee CLI
 
 ```bash
-npm install -g janee
+npm install -g @true-and-useful/janee
 ```
 
 ### 2. Initialize Janee
@@ -88,7 +88,7 @@ capabilities:
 ### 4. Install OpenClaw Plugin
 
 ```bash
-openclaw plugins install janee-openclaw-plugin
+openclaw plugins install @true-and-useful/janee-openclaw
 ```
 
 ### 5. Enable Plugin in Agent Config
@@ -378,7 +378,7 @@ await janee_execute({ sessionToken: session.token, ... });
 
 **Fix:**
 ```bash
-npm install -g janee
+npm install -g @true-and-useful/janee
 which janee  # Should return a path
 ```
 

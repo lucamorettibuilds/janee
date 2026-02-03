@@ -34,7 +34,7 @@ Janee is an [MCP](https://modelcontextprotocol.io) server that manages API secre
 ### Install
 
 ```bash
-npm install -g janee
+npm install -g @true-and-useful/janee
 ```
 
 ### Initialize
@@ -121,12 +121,12 @@ Janee decrypts the key, makes the request, logs everything, and returns the resp
 If you're using [OpenClaw](https://openclaw.ai), install the plugin for native tool support:
 
 ```bash
-npm install -g janee
+npm install -g @true-and-useful/janee
 janee init
 # Edit ~/.janee/config.yaml with your services
 
 # Install the OpenClaw plugin
-openclaw plugins install janee-openclaw-plugin
+openclaw plugins install @true-and-useful/janee-openclaw
 ```
 
 Enable in your agent config:
@@ -308,7 +308,7 @@ Agent never touches the real key.
 
 Works with any agent that speaks MCP:
 
-- **OpenClaw** — Native plugin (`janee-openclaw-plugin`)
+- **OpenClaw** — Native plugin (`@true-and-useful/janee-openclaw`)
 - **Claude Desktop** — MCP client
 - **Cursor** — MCP client
 - **Any MCP client** — just point at `janee serve`
