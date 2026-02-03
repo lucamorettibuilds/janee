@@ -2,5 +2,10 @@
   "id": "janee",
   "name": "Janee",
   "description": "Secrets management for AI agents - secure API access with audit logging",
-  "version": "0.1.1"
+  "version": "0.1.2",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
 }
