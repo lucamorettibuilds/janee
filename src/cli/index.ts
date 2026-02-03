@@ -15,7 +15,6 @@ import { removeCommand } from './commands/remove';
 import { migrateCommand } from './commands/migrate';
 import { sessionsCommand } from './commands/sessions';
 import { revokeCommand } from './commands/revoke';
-import { serveMCPCommand } from './commands/serve-mcp';
 
 const program = new Command();
 
@@ -40,17 +39,8 @@ program
 
 program
   .command('serve')
-  .description('Start Janee proxy server')
-  .option('-p, --port <port>', 'Port to listen on (default: 9119)', '9119')
-  .option('--mcp', 'Start MCP server (requires YAML config)')
-  .option('--no-llm', 'Disable LLM adjudication')
-  .action((options) => {
-    if (options.mcp) {
-      serveMCPCommand();
-    } else {
-      serveCommand(options);
-    }
-  });
+  .description('Start Janee MCP server')
+  .action(serveCommand);
 
 program
   .command('list')

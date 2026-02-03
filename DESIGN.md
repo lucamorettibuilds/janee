@@ -1,8 +1,8 @@
-# Janee Design: MCP-First Architecture
+# Janee Design: MCP-Only Architecture
 
 ## Overview
 
-Janee is a secrets proxy for AI agents. It stores API keys, exposes capabilities via MCP, and proxies requests — so agents never see real keys.
+Janee is a secrets proxy for AI agents. It stores API keys, exposes capabilities via MCP, and makes HTTP requests to real APIs — so agents never see real keys.
 
 **Core principle:** Janee is a dumb pipe with policy enforcement + audit. Not an API abstraction layer.
 
@@ -13,11 +13,11 @@ Janee is a secrets proxy for AI agents. It stores API keys, exposes capabilities
 ```
 ┌─────────────────┐         ┌─────────────────┐
 │   AI Agent      │         │     Janee       │
-│  (Claude Code,  │◄──MCP──►│   MCP Server    │
-│   Cursor, Kit)  │         │                 │
+│  (OpenClaw,     │◄──MCP──►│   MCP Server    │
+│   Claude, etc.) │         │                 │
 └─────────────────┘         │  ┌───────────┐  │
-                            │  │  Proxy    │  │
-        or direct HTTP ────►│  │  Engine   │──┼──► Real APIs
+                            │  │ HTTP      │  │
+                            │  │ Client    │──┼──► Real APIs
                             │  └───────────┘  │    (Stripe, Gmail, etc.)
                             │                 │
                             │  ┌───────────┐  │
@@ -27,25 +27,24 @@ Janee is a secrets proxy for AI agents. It stores API keys, exposes capabilities
                             └─────────────────┘
 ```
 
-**Two ways to use Janee:**
-1. **MCP calls** — Agent discovers services, calls `janee.execute(...)`, Janee proxies
-2. **HTTP proxy** — Agent gets credentials via MCP, uses curl/HTTP directly
+**How it works:**
+1. Agent connects to Janee MCP server (via stdio)
+2. Agent discovers services via `list_services` tool
+3. Agent calls `execute` tool to make API requests
+4. Janee decrypts key, makes HTTP request, logs, returns response
 
-Same policies, same audit trail, either path.
+**No HTTP proxy.** MCP is the only interface. Simpler, cleaner, more secure.
 
 ---
 
 ## MCP Tools
 
 ```
-janee.list_services()
+list_services()
   → Returns available capabilities and their policies
   
-janee.execute(service, method, path, body?, headers?)
-  → Proxies request to real API, returns response
-  
-janee.get_http_access(service, reason?)
-  → Returns { url, headers, expires } for direct HTTP use
+execute(service, method, path, body?, headers?, reason?)
+  → Makes HTTP request to real API, returns response
 ```
 
 ### Example: list_services response
@@ -77,32 +76,14 @@ janee.get_http_access(service, reason?)
 {
   "service": "stripe",
   "method": "GET",
-  "path": "/v1/customers"
+  "path": "/v1/customers",
+  "reason": "User asked for customer list"
 }
 
 // Response
 {
   "status": 200,
   "body": { "data": [...], "has_more": false }
-}
-```
-
-### Example: get_http_access
-
-```json
-// Request
-{
-  "service": "stripe",
-  "reason": "checking customer balance for support case"
-}
-
-// Response
-{
-  "url": "http://localhost:9119/stripe",
-  "headers": {
-    "Authorization": "Bearer jnee_sess_abc123"
-  },
-  "expires": "2026-02-03T09:00:00Z"
 }
 ```
 
@@ -113,12 +94,7 @@ janee.get_http_access(service, reason?)
 `~/.janee/config.yaml`
 
 ```yaml
-# Server settings
-server:
-  port: 9119
-  host: localhost
-
-# LLM for adjudication (optional)
+# LLM for adjudication (optional, Phase 2)
 llm:
   provider: openai  # or anthropic
   apiKey: env:OPENAI_API_KEY
@@ -171,7 +147,7 @@ capabilities:
 ### Config concepts
 
 **Services** = Real APIs with real keys (encrypted at rest)
-- `baseUrl`: Where requests get proxied to
+- `baseUrl`: Where requests get sent
 - `auth`: How to authenticate (bearer token, HMAC signature, custom headers)
 
 **Capabilities** = What agents see and can request
@@ -206,27 +182,27 @@ auth:
 
 ## Session Flow
 
-1. Agent connects to Janee MCP server
+1. Agent connects to Janee MCP server (stdio transport)
 2. Agent calls `list_services()` → sees available capabilities
-3. Agent calls `execute("stripe", "GET", "/v1/customers")` or `get_http_access("stripe")`
+3. Agent calls `execute("stripe", "GET", "/v1/customers", reason="...")`
 4. Janee checks:
    - Does this capability exist?
    - Is there an active session, or need to create one?
    - If `requiresReason`, did agent provide one?
    - If LLM approval enabled, does it pass?
-5. If approved: proxy request (or return HTTP credentials)
+5. If approved: make HTTP request to real API
 6. Log everything: timestamp, agent, capability, method, path, response status
 
 ---
 
 ## Audit Log
 
-`~/.janee/logs/audit.jsonl`
+`~/.janee/logs/YYYY-MM-DD.jsonl`
 
 ```json
-{"ts":"2026-02-03T08:15:00Z","capability":"stripe","method":"GET","path":"/v1/customers","status":200,"reason":null}
-{"ts":"2026-02-03T08:15:05Z","capability":"stripe_sensitive","method":"POST","path":"/v1/refunds","status":200,"reason":"customer requested refund for order #123"}
-{"ts":"2026-02-03T08:16:00Z","capability":"bybit","method":"POST","path":"/v5/order/create","status":403,"reason":"placing test order","denied":"LLM flagged as suspicious"}
+{"timestamp":"2026-02-03T08:15:00Z","service":"stripe","method":"GET","path":"/v1/customers","status":200}
+{"timestamp":"2026-02-03T08:15:05Z","service":"stripe","method":"POST","path":"/v1/refunds","status":200,"reason":"customer requested refund for order #123"}
+{"timestamp":"2026-02-03T08:16:00Z","service":"bybit","method":"POST","path":"/v5/order/create","status":403,"reason":"placing test order","denied":"LLM flagged as suspicious"}
 ```
 
 ---
@@ -235,12 +211,13 @@ auth:
 
 ```bash
 janee init                  # Set up ~/.janee/, generate encryption key
-janee serve                 # Start MCP server + HTTP proxy
+janee serve                 # Start MCP server (only mode)
 janee add <service>         # Add a service (prompts for details)
-janee list                  # Show configured services + capabilities
+janee list                  # Show configured services
 janee logs [-f]             # View/tail audit log
 janee sessions              # Show active sessions
 janee revoke <session>      # Kill a session immediately
+janee remove <service>      # Remove a service
 ```
 
 ---
@@ -248,29 +225,26 @@ janee revoke <session>      # Kill a session immediately
 ## What Janee Does NOT Do
 
 - **Model specific APIs** — Agent knows how to call Stripe, Janee just proxies
-- **Store agent code** — Agent runs elsewhere (Claude Code, Cursor, OpenClaw)
-- **Replace API clients** — Existing code works, just change base URL
+- **Store agent code** — Agent runs elsewhere (OpenClaw, Claude Desktop, etc.)
+- **Replace API clients** — Janee is transparent, agent makes normal API calls
 
 ---
 
-## Implementation Phases
+## Implementation Status
 
-### Phase 1 (current): Basic proxy ✅
+### Phase 1: Basic MCP server ✅
 - CLI: init, add, serve, list, logs
-- HTTP proxy with key injection
+- MCP server with `list_services` and `execute` tools
 - File-based config (encrypted)
 - Audit logging
-
-### Phase 2: MCP server
-- Implement MCP protocol
-- `list_services`, `execute`, `get_http_access` tools
 - Session management (TTL, revocation)
-- Capability-based access
+- OpenClaw plugin
 
-### Phase 3: Adjudication
+### Phase 2: Adjudication (planned)
 - LLM evaluation for `requiresReason` capabilities
 - Rules engine for custom policies
 - Anomaly detection (unusual patterns)
+- Rate limiting per capability
 
 ---
 
@@ -284,6 +258,26 @@ janee add gmail --url https://gmail.googleapis.com --key ya29.xxx
 janee serve
 ```
 
-Kit connects via MCP, discovers services, executes requests. Ross sees everything in `janee logs -f`.
+OpenClaw plugin spawns `janee serve`, connects via MCP, agent gets tools:
+- `janee_list_services`
+- `janee_execute`
+
+Ross sees everything in `janee logs -f`.
 
 See `docs/OPENCLAW.md` for complete integration guide.
+
+---
+
+## Why MCP-Only?
+
+**Simpler architecture** — One interface, less code to maintain
+
+**More secure** — No HTTP endpoint listening on localhost, no port configuration
+
+**Standard protocol** — MCP is becoming the standard for agent-tool communication
+
+**Better DX** — Agents discover capabilities dynamically, no hardcoded base URLs
+
+**Local by design** — MCP over stdio means no network exposure at all
+
+The HTTP calls to real APIs happen internally (Janee → Stripe/GitHub/etc.), but there's no HTTP proxy server for agents to connect to. MCP is the interface.

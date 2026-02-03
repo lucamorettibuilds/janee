@@ -11,7 +11,9 @@ import {
   Tool
 } from '@modelcontextprotocol/sdk/types.js';
 import { SessionManager } from './sessions.js';
-import { ProxyRequest, ProxyResponse } from './proxy.js';
+import http from 'http';
+import https from 'https';
+import { URL } from 'url';
 
 export interface Capability {
   name: string;
@@ -32,12 +34,25 @@ export interface ServiceConfig {
   };
 }
 
+export interface APIRequest {
+  service: string;
+  path: string;
+  method: string;
+  headers: Record<string, string>;
+  body?: string;
+}
+
+export interface APIResponse {
+  statusCode: number;
+  headers: Record<string, string | string[]>;
+  body: string;
+}
+
 export interface MCPServerOptions {
   capabilities: Capability[];
   services: Map<string, ServiceConfig>;
   sessionManager: SessionManager;
-  proxyUrl: string;
-  onExecute: (session: any, request: ProxyRequest) => Promise<ProxyResponse>;
+  onExecute: (session: any, request: APIRequest) => Promise<APIResponse>;
 }
 
 /**
@@ -64,7 +79,7 @@ function parseTTL(ttl: string): number {
  * Create and start MCP server
  */
 export function createMCPServer(options: MCPServerOptions): Server {
-  const { capabilities, services, sessionManager, proxyUrl, onExecute } = options;
+  const { capabilities, services, sessionManager, onExecute } = options;
 
   const server = new Server(
     {
@@ -127,30 +142,10 @@ export function createMCPServer(options: MCPServerOptions): Server {
     }
   };
 
-  // Tool: get_http_access
-  const getHttpAccessTool: Tool = {
-    name: 'get_http_access',
-    description: 'Get HTTP proxy credentials for direct API access',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        capability: {
-          type: 'string',
-          description: 'Capability name to access'
-        },
-        reason: {
-          type: 'string',
-          description: 'Reason for needing access (required for some capabilities)'
-        }
-      },
-      required: ['capability']
-    }
-  };
-
   // Register tools
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     return {
-      tools: [listServicesTool, executeTool, getHttpAccessTool]
+      tools: [listServicesTool, executeTool]
     };
   });
 
@@ -201,8 +196,8 @@ export function createMCPServer(options: MCPServerOptions): Server {
             { reason }
           );
 
-          // Build proxy request
-          const proxyReq: ProxyRequest = {
+          // Build API request
+          const apiReq: APIRequest = {
             service: cap.service,
             path,
             method,
@@ -211,7 +206,7 @@ export function createMCPServer(options: MCPServerOptions): Server {
           };
 
           // Execute
-          const response = await onExecute(session, proxyReq);
+          const response = await onExecute(session, apiReq);
 
           return {
             content: [{
@@ -219,44 +214,6 @@ export function createMCPServer(options: MCPServerOptions): Server {
               text: JSON.stringify({
                 status: response.statusCode,
                 body: response.body
-              }, null, 2)
-            }]
-          };
-        }
-
-        case 'get_http_access': {
-          const { capability, reason } = args as any;
-
-          // Find capability
-          const cap = capabilities.find(c => c.name === capability);
-          if (!cap) {
-            throw new Error(`Unknown capability: ${capability}`);
-          }
-
-          // Check if reason required
-          if (cap.requiresReason && !reason) {
-            throw new Error(`Capability "${capability}" requires a reason`);
-          }
-
-          // Create session
-          const ttlSeconds = parseTTL(cap.ttl);
-          const session = sessionManager.createSession(
-            cap.name,
-            cap.service,
-            ttlSeconds,
-            { reason }
-          );
-
-          // Return HTTP credentials
-          return {
-            content: [{
-              type: 'text',
-              text: JSON.stringify({
-                url: `${proxyUrl}/${cap.service}`,
-                headers: {
-                  Authorization: `Bearer ${session.id}`
-                },
-                expires: session.expiresAt.toISOString()
               }, null, 2)
             }]
           };
@@ -279,6 +236,49 @@ export function createMCPServer(options: MCPServerOptions): Server {
   });
 
   return server;
+}
+
+/**
+ * Make HTTP/HTTPS request to real API
+ */
+export function makeAPIRequest(
+  targetUrl: URL,
+  request: APIRequest
+): Promise<APIResponse> {
+  return new Promise((resolve, reject) => {
+    const client = targetUrl.protocol === 'https:' ? https : http;
+
+    const options = {
+      method: request.method,
+      headers: request.headers
+    };
+
+    const req = client.request(targetUrl, options, (res) => {
+      let body = '';
+
+      res.on('data', (chunk) => {
+        body += chunk;
+      });
+
+      res.on('end', () => {
+        resolve({
+          statusCode: res.statusCode || 500,
+          headers: res.headers as Record<string, string | string[]>,
+          body
+        });
+      });
+    });
+
+    req.on('error', (error) => {
+      reject(error);
+    });
+
+    if (request.body) {
+      req.write(request.body);
+    }
+
+    req.end();
+  });
 }
 
 /**

@@ -81,9 +81,9 @@ Agent thinks: "I need to check Stripe balance"
     ↓
 Agent calls: janee_execute({ service: "stripe", method: "GET", path: "/v1/balance" })
     ↓
-OpenClaw Plugin spawns: janee serve --mcp (MCP server via stdio)
+OpenClaw Plugin spawns: janee serve (MCP server via stdio)
     ↓
-Janee decrypts key, proxies request to api.stripe.com
+Janee decrypts key, makes HTTP request to api.stripe.com
     ↓
 Logs to: ~/.janee/logs/2026-02-03.jsonl
     ↓
@@ -96,7 +96,7 @@ The agent never sees the real API key. Janee handles injection + logging.
 
 ## Available Tools
 
-The plugin exposes three tools to your agent:
+The plugin exposes two tools to your agent:
 
 ### `janee_list_services`
 
@@ -136,20 +136,6 @@ janee_execute({
 - `path` — API endpoint path (e.g., `/v1/customers`)
 - `body` — (Optional) Request body as JSON string
 - `reason` — (Optional) Reason for the request (logged for audit, may be required for sensitive operations)
-
-### `janee_get_http_access`
-
-Gets HTTP proxy credentials for direct access (useful for scripts or tools that need raw HTTP):
-
-```typescript
-janee_get_http_access({
-  service: "stripe",
-  reason: "Running batch invoice script"
-})
-// Returns: { proxyUrl: "http://localhost:9119/stripe", authHeader: "Bearer jnee_xxx" }
-```
-
-This is for advanced use cases where the agent needs to generate curl commands or pass credentials to external tools.
 
 ---
 
@@ -245,9 +231,9 @@ rm ~/.janee/config.json
 # Option 2: Remove specific service
 janee remove stripe
 
-# Option 3: Stop the MCP server
-# (OpenClaw plugin spawns janee serve --mcp; killing it stops all access)
-pkill -f "janee serve --mcp"
+# Option 3: Kill the MCP server
+# (OpenClaw plugin spawns janee serve; killing it stops all access)
+pkill -f "janee serve"
 ```
 
 ### Key Storage
@@ -272,19 +258,19 @@ Logs never expire. Review them anytime.
 
 ## Multiple Agents
 
-If you run multiple OpenClaw agents (e.g., Kit, Kitkat, Olivia), they share the same Janee instance. The plugin spawns `janee serve --mcp` per agent session.
+If you run multiple OpenClaw agents (e.g., Kit, Kitkat, Olivia), they share the same Janee instance. The plugin spawns `janee serve` per agent session.
 
 For stricter separation:
-- Run separate Janee configs on different ports
-- Use different `~/.janee/` directories per agent
+- Run separate Janee configs on different directories
+- Use environment variables to point to different config paths
 
 Example:
 ```bash
 # Agent 1 (Kit)
-JANEE_CONFIG_DIR=~/.janee/kit janee serve --mcp --port 9119
+JANEE_CONFIG_DIR=~/.janee/kit janee serve
 
 # Agent 2 (Kitkat)
-JANEE_CONFIG_DIR=~/.janee/kitkat janee serve --mcp --port 9120
+JANEE_CONFIG_DIR=~/.janee/kitkat janee serve
 ```
 
 ---
@@ -359,7 +345,7 @@ which janee  # Should return a path
 **Debug:**
 ```bash
 # Try running MCP server manually
-janee serve --mcp
+janee serve
 
 # Check config exists
 ls -l ~/.janee/config.json
@@ -395,9 +381,9 @@ chmod 0600 ~/.janee/config.json
 
 ## Design Philosophy
 
-**No code changes.** The plugin integrates at the tool level. Your agent's skills/prompts don't need to know about Janee — they just call the tools.
+**MCP-first.** Janee uses the Model Context Protocol standard. No custom protocols, no HTTP endpoints, no authentication gymnastics.
 
-**No base URL rewrites.** Unlike HTTP proxy approach (which requires changing `baseUrl` in config), the plugin approach is self-contained.
+**No code changes.** The plugin integrates at the tool level. Your agent's skills/prompts don't need to know about Janee — they just call the tools.
 
 **Discoverable.** Agent calls `janee_list_services` to see what's available. No hardcoded service names.
 

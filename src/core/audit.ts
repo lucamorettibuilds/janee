@@ -1,11 +1,24 @@
 /**
  * Audit logging for Janee
- * Logs every proxy request to local files
+ * Logs every API request to local files
  */
 
 import fs from 'fs';
 import path from 'path';
-import { ProxyRequest, ProxyResponse } from './proxy';
+
+export interface APIRequest {
+  service: string;
+  path: string;
+  method: string;
+  headers: Record<string, string>;
+  body?: string;
+}
+
+export interface APIResponse {
+  statusCode: number;
+  headers: Record<string, string | string[]>;
+  body: string;
+}
 
 export interface AuditEvent {
   id: string;
@@ -42,9 +55,9 @@ export class AuditLogger {
   }
 
   /**
-   * Log a proxy request
+   * Log an API request
    */
-  log(req: ProxyRequest, res?: ProxyResponse, duration?: number): void {
+  log(req: APIRequest, res?: APIResponse, duration?: number): void {
     const event: AuditEvent = {
       id: this.generateId(),
       timestamp: new Date().toISOString(),

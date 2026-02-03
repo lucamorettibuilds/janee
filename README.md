@@ -1,6 +1,6 @@
 # Janee 🔐
 
-**Secrets management for AI agents**
+**Secrets management for AI agents via MCP**
 
 ---
 
@@ -17,11 +17,11 @@ AI agents need API access to be useful. The current approach is to give them you
 
 ## The Solution
 
-Janee is a local proxy that sits between your AI agents and your APIs:
+Janee is an [MCP](https://modelcontextprotocol.io) server that manages API secrets for AI agents:
 
 1. **Store your API keys** — encrypted locally in `~/.janee/`
-2. **Run `janee serve`** — starts a local proxy
-3. **Point your agent at the proxy** — `localhost:9119/<service>/...`
+2. **Run `janee serve`** — starts MCP server
+3. **Agent requests access** — via `execute` MCP tool
 4. **Janee injects the real key** — agent never sees it
 5. **Everything is logged** — full audit trail
 
@@ -49,59 +49,27 @@ janee init
 janee add stripe --url https://api.stripe.com --key sk_live_xxx
 ```
 
-### Start the proxy
+### Start the MCP server
 
 ```bash
 janee serve
 ```
 
-### Use it
+### Use with your agent
 
-```bash
-# Instead of calling Stripe directly, call through Janee
-curl http://localhost:9119/stripe/v1/balance
+Agents that support MCP (Claude Desktop, Cursor, OpenClaw) can now call the `execute` tool to make API requests through Janee:
 
-# Janee injects your real key, proxies the request, logs it
+```typescript
+// Agent calls the execute tool
+execute({
+  service: "stripe",
+  method: "GET",
+  path: "/v1/balance",
+  reason: "User asked for account balance"
+})
 ```
 
----
-
-## Two Ways to Use Janee
-
-### 1. HTTP Proxy
-
-Point any HTTP client at `localhost:9119/<service>/...`:
-
-```javascript
-// Before
-const stripe = new Stripe('sk_live_xxx');
-
-// After
-const stripe = new Stripe('unused', {
-  host: 'localhost',
-  port: 9119,
-  protocol: 'http',
-  basePath: '/stripe'
-});
-```
-
-### 2. MCP Server (for AI agents)
-
-Janee exposes an [MCP](https://modelcontextprotocol.io) server for agents that support it:
-
-```bash
-janee serve --mcp
-```
-
-**MCP Tools:**
-
-| Tool | Description |
-|------|-------------|
-| `list_services` | Discover available APIs and their policies |
-| `execute` | Proxy an API request |
-| `get_http_access` | Get credentials for HTTP proxy |
-
-Agents discover what's available, then call APIs through Janee. Same audit trail, same protection.
+Janee decrypts the key, makes the request, logs everything, and returns the response.
 
 ---
 
@@ -135,11 +103,23 @@ Your agent now has these tools:
 
 - `janee_list_services` — Discover available APIs
 - `janee_execute` — Make API requests through Janee
-- `janee_get_http_access` — Get HTTP proxy credentials
 
-The plugin spawns `janee serve --mcp` automatically. All requests are logged to `~/.janee/logs/`.
+The plugin spawns `janee serve` automatically. All requests are logged to `~/.janee/logs/`.
 
 **See [docs/OPENCLAW.md](docs/OPENCLAW.md) for full integration guide.**
+
+---
+
+## MCP Tools
+
+Janee exposes two MCP tools:
+
+| Tool | Description |
+|------|-------------|
+| `list_services` | Discover available APIs and their policies |
+| `execute` | Make an API request through Janee |
+
+Agents discover what's available, then call APIs through Janee. Same audit trail, same protection.
 
 ---
 
@@ -149,7 +129,7 @@ Config lives in `~/.janee/config.yaml`:
 
 ```yaml
 server:
-  port: 9119
+  host: localhost
 
 services:
   stripe:
@@ -184,16 +164,15 @@ capabilities:
 ## CLI Reference
 
 ```bash
-janee init              # Set up ~/.janee/
-janee add <service>     # Add a service
-janee list              # List configured services
-janee serve             # Start HTTP proxy
-janee serve --mcp       # Start MCP server
-janee logs              # View audit log
-janee logs -f           # Tail audit log
-janee sessions          # List active sessions
-janee revoke <id>       # Kill a session
-janee remove <service>  # Remove a service
+janee init          # Set up ~/.janee/
+janee add <service> # Add a service
+janee list          # List configured services
+janee serve         # Start MCP server
+janee logs          # View audit log
+janee logs -f       # Tail audit log
+janee sessions      # List active sessions
+janee revoke <id>   # Kill a session
+janee remove <service> # Remove a service
 ```
 
 ---
@@ -203,16 +182,16 @@ janee remove <service>  # Remove a service
 ```
 ┌─────────────┐      ┌──────────┐      ┌─────────┐
 │  AI Agent   │─────▶│  Janee   │─────▶│  Stripe │
-│             │      │  Proxy   │      │   API   │
+│             │ MCP  │   MCP    │ HTTP │   API   │
 └─────────────┘      └──────────┘      └─────────┘
       │                   │
    No key           Injects key
                     + logs request
 ```
 
-1. Agent calls `localhost:9119/stripe/v1/customers`
-2. Janee looks up `stripe` config, decrypts the real key
-3. Proxies request to `api.stripe.com` with real key
+1. Agent calls `execute` MCP tool with service, method, path
+2. Janee looks up service config, decrypts the real key
+3. Makes HTTP request to real API with key
 4. Logs: timestamp, service, method, path, status
 5. Returns response to agent
 
@@ -223,32 +202,31 @@ Agent never touches the real key.
 ## Security
 
 - **Encryption**: Keys stored with AES-256-GCM
-- **Local only**: Proxy binds to localhost by default
+- **Local only**: MCP server over stdio (no network exposure)
 - **Audit log**: Every request logged to `~/.janee/logs/`
 - **Sessions**: Time-limited, revocable
-- **Kill switch**: `janee revoke` or just stop the server
+- **Kill switch**: `janee revoke` or delete config
 
 ---
 
 ## Integrations
 
-Works with any agent that can make HTTP requests or speak MCP:
+Works with any agent that speaks MCP:
 
-- **OpenClaw** — Native plugin (`@openclaw/janee`) — [Guide](docs/OPENCLAW.md)
-- **Claude Desktop** — MCP server
-- **Cursor** — MCP server or HTTP proxy
-- **LangChain** — HTTP proxy
-- **Any HTTP client** — just change the base URL
+- **OpenClaw** — Native plugin (`@openclaw/janee`)
+- **Claude Desktop** — MCP client
+- **Cursor** — MCP client
+- **Any MCP client** — just point at `janee serve`
 
 ---
 
 ## Roadmap
 
-- [x] Local HTTP proxy
+- [x] MCP server interface
 - [x] Encrypted key storage  
 - [x] Audit logging
-- [x] MCP server
 - [x] Session management
+- [x] OpenClaw plugin
 - [ ] LLM adjudication (evaluate requests with AI)
 - [ ] Policy engine (rate limits, allowlists)
 - [ ] Cloud version (managed hosting)

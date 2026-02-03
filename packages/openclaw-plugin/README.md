@@ -46,7 +46,7 @@ Enable the plugin in your agent config:
 
 ## Usage
 
-The plugin exposes three tools to your agent:
+The plugin exposes two tools to your agent:
 
 ### `janee_list_services`
 
@@ -78,18 +78,6 @@ await janee_execute({
 })
 ```
 
-### `janee_get_http_access`
-
-Gets proxy credentials for direct HTTP access (useful for scripts):
-
-```typescript
-await janee_get_http_access({
-  service: "stripe",
-  reason: "Generating invoice via script"
-})
-// Returns proxy URL and auth header
-```
-
 ## How It Works
 
 ```
@@ -97,12 +85,12 @@ Agent calls janee_execute
     ↓
 OpenClaw Plugin (@openclaw/janee)
     ↓ spawns & connects via MCP
-Janee MCP Server (janee serve --mcp)
-    ↓ decrypts key & proxies
+Janee MCP Server (janee serve)
+    ↓ decrypts key & makes HTTP call
 Real API (Stripe, GitHub, etc.)
 ```
 
-The plugin spawns `janee serve --mcp` as a subprocess and communicates via stdio. All requests are logged to `~/.janee/logs/YYYY-MM-DD.jsonl`.
+The plugin spawns `janee serve` as a subprocess and communicates via stdio (MCP is the only mode now). All requests are logged to `~/.janee/logs/YYYY-MM-DD.jsonl`.
 
 ## Monitoring
 

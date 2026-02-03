@@ -1,11 +1,8 @@
 import { loadYAMLConfig, hasYAMLConfig } from '../config-yaml';
-import { createMCPServer, startMCPServer, Capability, ServiceConfig } from '../../core/mcp-server';
+import { createMCPServer, startMCPServer, Capability, ServiceConfig, makeAPIRequest } from '../../core/mcp-server';
 import { SessionManager } from '../../core/sessions';
-import { ProxyRequest, ProxyResponse } from '../../core/proxy';
 import { AuditLogger } from '../../core/audit';
 import { getAuditDir } from '../config';
-import https from 'https';
-import http from 'http';
 import { URL } from 'url';
 
 export async function serveMCPCommand(): Promise<void> {
@@ -44,7 +41,6 @@ export async function serveMCPCommand(): Promise<void> {
       capabilities,
       services,
       sessionManager,
-      proxyUrl: `http://${config.server.host}:${config.server.port}`,
       
       onExecute: async (session, request) => {
         // Get service config
@@ -67,32 +63,10 @@ export async function serveMCPCommand(): Promise<void> {
         }
         // TODO: HMAC signature support
 
-        // Make request
-        const client = targetUrl.protocol === 'https:' ? https : http;
-        
-        const response = await new Promise<ProxyResponse>((resolve, reject) => {
-          const req = client.request(targetUrl, {
-            method: request.method,
-            headers
-          }, (res) => {
-            let body = '';
-            res.on('data', chunk => { body += chunk; });
-            res.on('end', () => {
-              resolve({
-                statusCode: res.statusCode || 500,
-                headers: res.headers as Record<string, string | string[]>,
-                body
-              });
-            });
-          });
-
-          req.on('error', reject);
-
-          if (request.body) {
-            req.write(request.body);
-          }
-
-          req.end();
+        // Make API request
+        const response = await makeAPIRequest(targetUrl, {
+          ...request,
+          headers
         });
 
         // Log to audit
