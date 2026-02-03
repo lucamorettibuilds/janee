@@ -1,73 +1,199 @@
 # Using Janee with OpenClaw
 
-OpenClaw agents can use Janee with minimal configuration changes.
+Native integration between Janee and [OpenClaw](https://openclaw.ai) via MCP plugin.
 
 ---
 
 ## Why Janee + OpenClaw?
 
-OpenClaw agents often need access to multiple APIs — Gmail, Stripe, databases, etc. Without Janee, the agent has direct access to all keys.
+OpenClaw agents often need access to multiple APIs — Gmail, Stripe, trading exchanges, databases, etc. Without Janee, API keys live in config files and agents have unrestricted access.
 
 **With Janee:**
-- Keys live in Janee (encrypted at rest)
-- Agent proxies requests through `localhost:9119`
-- Full audit trail of API access
-- Kill switch: stop Janee or revoke sessions
+- 🔐 Keys stay encrypted in `~/.janee/` (never in config files)
+- 🛠️ Agent uses `janee_*` tools (native OpenClaw integration)
+- 📝 Full audit trail of every API call
+- 🚦 Future: LLM adjudication for sensitive operations
+- 🚨 Kill switch: stop Janee or delete config
 
 ---
 
-## Setup
+## Quick Start
 
-### 1. Install Janee
+### 1. Install Janee CLI
 
 ```bash
 npm install -g janee
 ```
 
-### 2. Initialize
+### 2. Initialize Janee
 
 ```bash
 janee init
 ```
 
-Creates `~/.janee/` and generates a master encryption key.
+Creates `~/.janee/config.json` with encrypted master key.
 
-### 3. Add Your Services
+### 3. Add Your API Credentials
 
 ```bash
 janee add stripe --url https://api.stripe.com --key sk_live_xxx
-janee add gmail --url https://gmail.googleapis.com --key <token>
+janee add github --url https://api.github.com --key ghp_xxx
+janee add bybit --url https://api.bybit.com --key <api-key>
 ```
 
-### 4. Start Janee
+### 4. Install OpenClaw Plugin
 
 ```bash
-janee serve
+openclaw plugins install @openclaw/janee
 ```
 
-### 5. Update OpenClaw Tool Configs
+### 5. Enable Plugin in Agent Config
 
-In your OpenClaw tools or skills that make API calls, change the base URL:
+Edit your agent config (usually `~/.openclaw/config.json5`):
 
-```yaml
-# Before
-stripe:
-  baseUrl: https://api.stripe.com
-  apiKey: sk_live_xxx
-
-# After
-stripe:
-  baseUrl: http://localhost:9119/stripe
-  apiKey: unused  # Janee injects the real key
+```json5
+{
+  agents: {
+    list: [
+      {
+        id: "main",
+        tools: {
+          allow: ["janee"]  // Enables janee_* tools
+        }
+      }
+    ]
+  }
+}
 ```
 
-That's it. The agent now proxies through Janee.
+Restart OpenClaw:
+
+```bash
+openclaw gateway restart
+```
+
+---
+
+## How It Works
+
+```
+Agent thinks: "I need to check Stripe balance"
+    ↓
+Agent calls: janee_execute({ service: "stripe", method: "GET", path: "/v1/balance" })
+    ↓
+OpenClaw Plugin spawns: janee serve --mcp (MCP server via stdio)
+    ↓
+Janee decrypts key, proxies request to api.stripe.com
+    ↓
+Logs to: ~/.janee/logs/2026-02-03.jsonl
+    ↓
+Returns response to agent
+```
+
+The agent never sees the real API key. Janee handles injection + logging.
+
+---
+
+## Available Tools
+
+The plugin exposes three tools to your agent:
+
+### `janee_list_services`
+
+Lists all configured services:
+
+```typescript
+janee_list_services()
+// Returns: ["stripe", "github", "bybit", "gmail"]
+```
+
+The agent can discover what APIs are available without hardcoding service names.
+
+### `janee_execute`
+
+Makes API requests through Janee:
+
+```typescript
+janee_execute({
+  service: "stripe",
+  method: "GET",
+  path: "/v1/balance",
+  reason: "User asked for account balance"
+})
+
+janee_execute({
+  service: "github",
+  method: "POST",
+  path: "/repos/owner/repo/issues",
+  body: JSON.stringify({ title: "Bug report", body: "Details..." }),
+  reason: "Creating issue per user request"
+})
+```
+
+**Parameters:**
+- `service` — Service name from `janee_list_services`
+- `method` — HTTP method (GET, POST, PUT, DELETE, PATCH)
+- `path` — API endpoint path (e.g., `/v1/customers`)
+- `body` — (Optional) Request body as JSON string
+- `reason` — (Optional) Reason for the request (logged for audit, may be required for sensitive operations)
+
+### `janee_get_http_access`
+
+Gets HTTP proxy credentials for direct access (useful for scripts or tools that need raw HTTP):
+
+```typescript
+janee_get_http_access({
+  service: "stripe",
+  reason: "Running batch invoice script"
+})
+// Returns: { proxyUrl: "http://localhost:9119/stripe", authHeader: "Bearer jnee_xxx" }
+```
+
+This is for advanced use cases where the agent needs to generate curl commands or pass credentials to external tools.
+
+---
+
+## Real-World Example: Kit Trading Crypto
+
+Kit (Ross's main agent) uses Janee to access trading exchanges:
+
+```typescript
+// Check Bybit balance
+const balance = await janee_execute({
+  service: "bybit",
+  method: "GET",
+  path: "/v5/account/wallet-balance",
+  reason: "User asked for portfolio summary"
+});
+
+// Place a limit order
+const order = await janee_execute({
+  service: "bybit",
+  method: "POST",
+  path: "/v5/order/create",
+  body: JSON.stringify({
+    category: "spot",
+    symbol: "BTCUSDT",
+    side: "Buy",
+    orderType: "Limit",
+    qty: "0.001",
+    price: "50000"
+  }),
+  reason: "Executing trade per user approval"
+});
+```
+
+All requests logged. Ross can review:
+
+```bash
+janee logs --service bybit
+```
 
 ---
 
 ## Monitoring
 
-Watch what your agent is doing in real-time:
+### Watch Live Requests
 
 ```bash
 janee logs -f
@@ -75,107 +201,288 @@ janee logs -f
 
 Output:
 ```json
-{"ts":"2026-02-03T08:15:00Z","service":"stripe","method":"GET","path":"/v1/customers","status":200}
-{"ts":"2026-02-03T08:15:05Z","service":"gmail","method":"GET","path":"/gmail/v1/users/me/messages","status":200}
+{"timestamp":"2026-02-03T08:15:00.000Z","service":"stripe","method":"GET","path":"/v1/balance","status":200,"duration":123}
+{"timestamp":"2026-02-03T08:15:05.000Z","service":"bybit","method":"POST","path":"/v5/order/create","status":200,"duration":456,"reason":"Executing trade per user approval"}
 ```
 
-Filter by service:
+### Filter by Service
 
 ```bash
-janee logs -f -s stripe
+janee logs --service stripe
+```
+
+### Review Specific Date
+
+```bash
+janee logs --date 2026-02-03
+```
+
+### Parse Logs with jq
+
+```bash
+# Find all failed requests
+janee logs | jq 'select(.status >= 400)'
+
+# Count requests per service
+janee logs | jq -r '.service' | sort | uniq -c
+
+# Find requests with no reason
+janee logs | jq 'select(.reason == null)'
 ```
 
 ---
 
-## Kill Switch
+## Security
+
+### Kill Switch
 
 If your agent goes rogue:
 
 ```bash
-# Stop all API access
-janee revoke --all
+# Option 1: Remove config (immediate lockdown)
+rm ~/.janee/config.json
 
-# Or just stop the proxy
-ctrl+c
+# Option 2: Remove specific service
+janee remove stripe
+
+# Option 3: Stop the MCP server
+# (OpenClaw plugin spawns janee serve --mcp; killing it stops all access)
+pkill -f "janee serve --mcp"
 ```
 
-No proxy = no API access.
+### Key Storage
+
+- Keys encrypted with AES-256-GCM
+- Master key derived from user-specific seed
+- Config files locked to user-only (chmod 0600)
+
+### Audit Trail
+
+Every request logged:
+- Timestamp
+- Service
+- Method + path
+- Status code
+- Duration
+- Reason (if provided)
+
+Logs never expire. Review them anytime.
 
 ---
 
 ## Multiple Agents
 
-If you run multiple OpenClaw agents, they can share the same Janee instance. The audit log shows which requests came from which session.
+If you run multiple OpenClaw agents (e.g., Kit, Kitkat, Olivia), they share the same Janee instance. The plugin spawns `janee serve --mcp` per agent session.
 
-For stricter separation, run separate Janee instances on different ports:
+For stricter separation:
+- Run separate Janee configs on different ports
+- Use different `~/.janee/` directories per agent
 
+Example:
 ```bash
-# Agent 1
-janee serve --port 9119
+# Agent 1 (Kit)
+JANEE_CONFIG_DIR=~/.janee/kit janee serve --mcp --port 9119
 
-# Agent 2  
-janee serve --port 9120 --config ~/.janee/agent2/
+# Agent 2 (Kitkat)
+JANEE_CONFIG_DIR=~/.janee/kitkat janee serve --mcp --port 9120
 ```
 
 ---
 
-## Capabilities
+## Phase 2 Features (Coming Soon)
 
-For fine-grained control, define capabilities with different policies:
+### LLM Adjudication
+
+For sensitive operations (large crypto trades, account changes), Janee can call an LLM to approve/deny:
 
 ```yaml
-# ~/.janee/config.yaml
+capabilities:
+  bybit_sensitive:
+    service: bybit
+    requiresApproval: true
+    llmProvider: openai
+    llmModel: gpt-4
+```
+
+When the agent tries to place a $10k trade, Janee asks GPT-4: "Should this be allowed?" with context (recent activity, user preferences, risk limits).
+
+### Policy Engine
+
+```yaml
 capabilities:
   stripe:
     service: stripe
-    ttl: 1h
-    autoApprove: true
-
-  stripe_sensitive:
-    service: stripe
-    ttl: 5m
-    requiresReason: true
+    allowedEndpoints:
+      - /v1/balance
+      - /v1/customers
+    blockedEndpoints:
+      - /v1/charges  # Prevent agent from charging cards
+    rateLimit:
+      requests: 100
+      window: 1h
 ```
 
-Agent requests `stripe` for normal operations (auto-approved), but `stripe_sensitive` for dangerous operations (must provide a reason, shorter session).
+### Session Tokens
+
+For longer-running tasks:
+
+```typescript
+// Request access with intent
+const session = await janee_request_access({
+  service: "stripe",
+  reason: "Processing invoices for next hour",
+  ttl: 3600
+});
+
+// Use session token for multiple requests
+await janee_execute({ sessionToken: session.token, ... });
+```
 
 ---
 
-## MCP Integration
+## Troubleshooting
 
-Once OpenClaw adds MCP client support, agents will be able to discover available services dynamically:
+### Plugin Can't Find Janee
 
+**Error:** `command not found: janee`
+
+**Fix:**
 ```bash
-janee serve --mcp
-```
-
-The agent calls `list_services` to see what's available, then `execute` to make requests. Same protection, better DX.
-
----
-
-## Example: Full Setup
-
-```bash
-# Install
 npm install -g janee
-
-# Initialize
-janee init
-
-# Add services
-janee add stripe --url https://api.stripe.com --key sk_live_xxx
-janee add gmail --url https://gmail.googleapis.com --key ya29.xxx
-janee add github --url https://api.github.com --key ghp_xxx
-
-# Start proxy
-janee serve
-
-# (In another terminal) Watch logs
-janee logs -f
+which janee  # Should return a path
 ```
 
-Then update your OpenClaw workspace to use `localhost:9119/<service>` as the base URL for each service.
+### Connection Errors
+
+**Error:** `Failed to connect to Janee MCP server`
+
+**Debug:**
+```bash
+# Try running MCP server manually
+janee serve --mcp
+
+# Check config exists
+ls -l ~/.janee/config.json
+
+# Check services are configured
+janee list
+```
+
+### Permission Errors
+
+**Error:** `EACCES: permission denied, open '/Users/you/.janee/config.json'`
+
+**Fix:**
+```bash
+# Config should be readable only by you
+ls -l ~/.janee/config.json
+# Should show: -rw------- (0600)
+
+# If not, fix permissions
+chmod 0600 ~/.janee/config.json
+```
+
+### Agent Not Seeing Tools
+
+**Error:** Agent doesn't have `janee_*` tools
+
+**Fix:**
+1. Check plugin is installed: `openclaw plugins list`
+2. Check agent config has `tools: { allow: ["janee"] }`
+3. Restart OpenClaw: `openclaw gateway restart`
 
 ---
 
-**Questions?** Open an issue on GitHub.
+## Design Philosophy
+
+**No code changes.** The plugin integrates at the tool level. Your agent's skills/prompts don't need to know about Janee — they just call the tools.
+
+**No base URL rewrites.** Unlike HTTP proxy approach (which requires changing `baseUrl` in config), the plugin approach is self-contained.
+
+**Discoverable.** Agent calls `janee_list_services` to see what's available. No hardcoded service names.
+
+**Auditable.** Every request logged with timestamp, service, endpoint, and reason.
+
+**Kill-switchable.** Delete config or stop server = immediate lockdown.
+
+---
+
+## Migration from Direct API Access
+
+If your agent currently has API keys in config:
+
+### Before (Insecure)
+
+```json5
+{
+  agents: {
+    list: [{
+      id: "main",
+      env: {
+        STRIPE_API_KEY: "sk_live_xxx",
+        GITHUB_TOKEN: "ghp_xxx"
+      }
+    }]
+  }
+}
+```
+
+### After (Janee)
+
+```json5
+{
+  agents: {
+    list: [{
+      id: "main",
+      tools: { allow: ["janee"] }
+      // No API keys in config!
+    }]
+  }
+}
+```
+
+Move keys to Janee:
+
+```bash
+janee add stripe --url https://api.stripe.com --key sk_live_xxx
+janee add github --url https://api.github.com --key ghp_xxx
+```
+
+Update agent code to use tools:
+
+```typescript
+// Before
+const stripe = require('stripe')(process.env.STRIPE_API_KEY);
+const balance = await stripe.balance.retrieve();
+
+// After
+const balance = await janee_execute({
+  service: "stripe",
+  method: "GET",
+  path: "/v1/balance"
+});
+```
+
+---
+
+## Next Steps
+
+1. **Install Janee + plugin** (5 minutes)
+2. **Move one API key** (Stripe or GitHub — start small)
+3. **Test with agent** (call `janee_list_services`, then `janee_execute`)
+4. **Watch logs** (`janee logs -f` — see it work)
+5. **Move more keys** (once you trust it)
+
+**Total setup time: < 10 minutes**
+
+---
+
+## Questions?
+
+- GitHub Issues: https://github.com/rsdouglas/janee/issues
+- OpenClaw Discord: https://discord.com/invite/clawd (mention Janee)
+- Email: ross@openclaw.ai
+
+---
+
+**Stop giving AI agents your keys. Start controlling access.** 🔐

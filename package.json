@@ -6,8 +6,13 @@
   "bin": {
     "janee": "dist/cli/index.js"
   },
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run build --workspaces",
+    "build:cli": "tsc",
+    "build:plugin": "npm run build --workspace=packages/openclaw-plugin",
     "dev": "tsc --watch",
     "start": "node dist/cli/index.js",
     "test": "jest"

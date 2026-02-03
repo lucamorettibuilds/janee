@@ -105,6 +105,44 @@ Agents discover what's available, then call APIs through Janee. Same audit trail
 
 ---
 
+## OpenClaw Integration
+
+If you're using [OpenClaw](https://openclaw.ai), install the plugin for native tool support:
+
+```bash
+npm install -g janee
+janee init
+janee add stripe --url https://api.stripe.com --key sk_live_xxx
+
+# Install the OpenClaw plugin
+openclaw plugins install @openclaw/janee
+```
+
+Enable in your agent config:
+
+```json5
+{
+  agents: {
+    list: [{
+      id: "main",
+      tools: { allow: ["janee"] }
+    }]
+  }
+}
+```
+
+Your agent now has these tools:
+
+- `janee_list_services` — Discover available APIs
+- `janee_execute` — Make API requests through Janee
+- `janee_get_http_access` — Get HTTP proxy credentials
+
+The plugin spawns `janee serve --mcp` automatically. All requests are logged to `~/.janee/logs/`.
+
+**See [docs/OPENCLAW.md](docs/OPENCLAW.md) for full integration guide.**
+
+---
+
 ## Configuration
 
 Config lives in `~/.janee/config.yaml`:
@@ -196,9 +234,9 @@ Agent never touches the real key.
 
 Works with any agent that can make HTTP requests or speak MCP:
 
+- **OpenClaw** — Native plugin (`@openclaw/janee`) — [Guide](docs/OPENCLAW.md)
 - **Claude Desktop** — MCP server
 - **Cursor** — MCP server or HTTP proxy
-- **OpenClaw** — HTTP proxy (MCP coming)
 - **LangChain** — HTTP proxy
 - **Any HTTP client** — just change the base URL
 
