@@ -34,7 +34,7 @@
     "model-context-protocol",
     "api-proxy"
   ],
-  "author": "Ross Douglas & David Wilson",
+  "author": "True and Useful LLC",
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.3",

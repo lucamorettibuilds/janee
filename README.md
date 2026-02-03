@@ -317,7 +317,7 @@ Works with any agent that speaks MCP:
 
 ## License
 
-MIT
+MIT — Built by [True and Useful LLC](https://trueanduseful.com)
 
 ---
 

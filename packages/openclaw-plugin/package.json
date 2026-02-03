@@ -38,7 +38,7 @@
     "url": "https://github.com/rsdouglas/janee.git",
     "directory": "packages/openclaw-plugin"
   },
-  "author": "Ross Douglas",
+  "author": "True and Useful LLC",
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
