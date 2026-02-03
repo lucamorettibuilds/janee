@@ -315,12 +315,6 @@ Works with any agent that speaks MCP:
 
 ---
 
-## Contributing
-
-Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
-
----
-
 ## License
 
 MIT

@@ -75,6 +75,10 @@ export function loadYAMLConfig(): JaneeYAMLConfig {
   const content = fs.readFileSync(CONFIG_FILE_YAML, 'utf8');
   const config = yaml.load(content) as JaneeYAMLConfig;
 
+  // Ensure services and capabilities are objects (YAML parses empty sections as null)
+  config.services = config.services || {};
+  config.capabilities = config.capabilities || {};
+
   // Decrypt service auth keys
   for (const [name, service] of Object.entries(config.services)) {
     const svc = service as ServiceConfig;
