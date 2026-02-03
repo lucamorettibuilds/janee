@@ -105,6 +105,18 @@ export default function(api: any) {
     }
   });
 
+  api.registerTool({
+    name: "janee_reload_config",
+    description: "Reload Janee configuration from disk. Use after adding or modifying services in ~/.janee/config.yaml to pick up changes without restarting.",
+    parameters: Type.Object({}),
+    async execute() {
+      return await callWithReconnect(api, async (client) => {
+        const result = await client.callTool({ name: "reload_config", arguments: {} });
+        return { content: result.content };
+      });
+    }
+  });
+
   // Clean up on shutdown
   api.on?.("shutdown", async () => {
     if (mcpClient) {
