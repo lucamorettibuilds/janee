@@ -106,8 +106,14 @@ export async function serveMCPCommand(): Promise<void> {
           const recvWindow = '5000';
           const queryString = targetUrl.searchParams.toString();
           
-          // Signature payload: timestamp + apiKey + recvWindow + queryString
-          const signPayload = timestamp + serviceConfig.auth.apiKey + recvWindow + queryString;
+          // Signature payload differs by method:
+          // GET/DELETE: timestamp + apiKey + recvWindow + queryString
+          // POST/PUT: timestamp + apiKey + recvWindow + body
+          const method = request.method.toUpperCase();
+          const payloadData = (method === 'POST' || method === 'PUT') 
+            ? (request.body || '')
+            : queryString;
+          const signPayload = timestamp + serviceConfig.auth.apiKey + recvWindow + payloadData;
           const signature = createHmac('sha256', serviceConfig.auth.apiSecret)
             .update(signPayload)
             .digest('hex');
