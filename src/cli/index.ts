@@ -14,6 +14,7 @@ import { listCommand } from './commands/list';
 import { logsCommand } from './commands/logs';
 import { sessionsCommand } from './commands/sessions';
 import { revokeCommand } from './commands/revoke';
+import { searchCommand } from './commands/search';
 
 const program = new Command();
 
@@ -67,5 +68,11 @@ program
   .command('revoke <session>')
   .description('Revoke a session immediately')
   .action(revokeCommand);
+
+program
+  .command('search [query]')
+  .description('Search the service directory')
+  .option('-v, --verbose', 'Show full details for each service')
+  .action((query, options) => searchCommand(query, options.verbose));
 
 program.parse();

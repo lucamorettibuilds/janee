@@ -3,8 +3,8 @@ import { createMCPServer, startMCPServer, Capability, ServiceConfig, makeAPIRequ
 import { SessionManager } from '../../core/sessions';
 import { AuditLogger } from '../../core/audit';
 import { getAuditDir } from '../config-yaml';
+import { signBybit, signOKX, signMEXC } from '../../core/signing';
 import { URL } from 'url';
-import { createHmac } from 'crypto';
 
 /**
  * Load config and convert to MCP format
@@ -88,57 +88,39 @@ export async function serveMCPCommand(): Promise<void> {
         } else if (serviceConfig.auth.type === 'headers' && serviceConfig.auth.headers) {
           Object.assign(headers, serviceConfig.auth.headers);
         } else if (serviceConfig.auth.type === 'hmac' && serviceConfig.auth.apiKey && serviceConfig.auth.apiSecret) {
-          // HMAC signature (MEXC-style) - query param signature
-          const timestamp = Date.now().toString();
-          targetUrl.searchParams.set('timestamp', timestamp);
-          
-          // Create signature from query string
-          const queryString = targetUrl.searchParams.toString();
-          const signature = createHmac('sha256', serviceConfig.auth.apiSecret)
-            .update(queryString)
-            .digest('hex');
-          
-          targetUrl.searchParams.set('signature', signature);
-          headers['X-MEXC-APIKEY'] = serviceConfig.auth.apiKey;
+          // MEXC-style HMAC - signature in URL params
+          const result = signMEXC({
+            apiKey: serviceConfig.auth.apiKey,
+            apiSecret: serviceConfig.auth.apiSecret,
+            queryString: targetUrl.searchParams.toString()
+          });
+          Object.assign(headers, result.headers);
+          if (result.urlParams) {
+            for (const [key, value] of Object.entries(result.urlParams)) {
+              targetUrl.searchParams.set(key, value);
+            }
+          }
         } else if (serviceConfig.auth.type === 'hmac-bybit' && serviceConfig.auth.apiKey && serviceConfig.auth.apiSecret) {
-          // Bybit-style HMAC - header signature
-          const timestamp = Date.now().toString();
-          const recvWindow = '5000';
-          const queryString = targetUrl.searchParams.toString();
-          
-          // Signature payload differs by method:
-          // GET/DELETE: timestamp + apiKey + recvWindow + queryString
-          // POST/PUT: timestamp + apiKey + recvWindow + body
-          const method = request.method.toUpperCase();
-          const payloadData = (method === 'POST' || method === 'PUT') 
-            ? (request.body || '')
-            : queryString;
-          const signPayload = timestamp + serviceConfig.auth.apiKey + recvWindow + payloadData;
-          const signature = createHmac('sha256', serviceConfig.auth.apiSecret)
-            .update(signPayload)
-            .digest('hex');
-          
-          headers['X-BAPI-API-KEY'] = serviceConfig.auth.apiKey;
-          headers['X-BAPI-TIMESTAMP'] = timestamp;
-          headers['X-BAPI-SIGN'] = signature;
-          headers['X-BAPI-RECV-WINDOW'] = recvWindow;
+          // Bybit-style HMAC - signature in headers
+          const result = signBybit({
+            apiKey: serviceConfig.auth.apiKey,
+            apiSecret: serviceConfig.auth.apiSecret,
+            method: request.method,
+            queryString: targetUrl.searchParams.toString(),
+            body: request.body
+          });
+          Object.assign(headers, result.headers);
         } else if (serviceConfig.auth.type === 'hmac-okx' && serviceConfig.auth.apiKey && serviceConfig.auth.apiSecret && serviceConfig.auth.passphrase) {
-          // OKX-style HMAC - header signature with passphrase, base64 encoded
-          const timestamp = new Date().toISOString().slice(0, -1) + 'Z'; // ISO8601 format
-          const method = request.method.toUpperCase();
-          const requestPath = '/' + reqPath + (targetUrl.search || '');
-          const body = request.body || '';
-          
-          // Signature payload: timestamp + method + requestPath + body
-          const signPayload = timestamp + method + requestPath + body;
-          const signature = createHmac('sha256', serviceConfig.auth.apiSecret)
-            .update(signPayload)
-            .digest('base64');
-          
-          headers['OK-ACCESS-KEY'] = serviceConfig.auth.apiKey;
-          headers['OK-ACCESS-SIGN'] = signature;
-          headers['OK-ACCESS-TIMESTAMP'] = timestamp;
-          headers['OK-ACCESS-PASSPHRASE'] = serviceConfig.auth.passphrase;
+          // OKX-style HMAC - signature with passphrase, base64 encoded
+          const result = signOKX({
+            apiKey: serviceConfig.auth.apiKey,
+            apiSecret: serviceConfig.auth.apiSecret,
+            passphrase: serviceConfig.auth.passphrase,
+            method: request.method,
+            requestPath: '/' + reqPath + (targetUrl.search || ''),
+            body: request.body
+          });
+          Object.assign(headers, result.headers);
         }
 
         // Set Content-Type for requests with body

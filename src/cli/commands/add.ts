@@ -2,6 +2,7 @@ import * as readline from 'readline/promises';
 import { stdin as input, stdout as output } from 'process';
 import { loadYAMLConfig, saveYAMLConfig, hasYAMLConfig } from '../config-yaml';
 import type { AuthConfig, ServiceConfig, CapabilityConfig } from '../config-yaml';
+import { getService, searchDirectory, ServiceTemplate } from '../../core/directory';
 
 export async function addCommand(
   serviceName?: string,
@@ -18,7 +19,7 @@ export async function addCommand(
 
     // Service name
     if (!serviceName) {
-      serviceName = await rl.question('Service name: ');
+      serviceName = await rl.question('Service name (or search term): ');
       serviceName = serviceName.trim();
     }
 
@@ -37,27 +38,79 @@ export async function addCommand(
       process.exit(1);
     }
 
-    // Base URL
-    let baseUrl = options.url;
-    if (!baseUrl) {
-      baseUrl = await rl.question('Base URL: ');
-      baseUrl = baseUrl.trim();
+    // Check directory for known service
+    let template = getService(serviceName);
+    
+    // If no exact match, search and suggest
+    if (!template) {
+      const matches = searchDirectory(serviceName);
+      if (matches.length === 1) {
+        // Single match - suggest it
+        const suggest = matches[0];
+        const useIt = await rl.question(`Found "${suggest.name}" (${suggest.description}). Use it? (Y/n): `);
+        if (!useIt || useIt.toLowerCase() === 'y' || useIt.toLowerCase() === 'yes') {
+          template = suggest;
+          serviceName = suggest.name;
+        }
+      } else if (matches.length > 1) {
+        // Multiple matches - list them
+        console.log(`\nFound ${matches.length} matching services:`);
+        matches.forEach((m, i) => console.log(`  ${i + 1}. ${m.name} - ${m.description}`));
+        const choice = await rl.question('Enter number to use, or press Enter to configure manually: ');
+        const idx = parseInt(choice) - 1;
+        if (idx >= 0 && idx < matches.length) {
+          template = matches[idx];
+          serviceName = template.name;
+        }
+      }
     }
 
-    if (!baseUrl || !baseUrl.startsWith('http')) {
-      console.error('❌ Invalid base URL. Must start with http:// or https://');
-      rl.close();
-      process.exit(1);
-    }
+    let baseUrl: string;
+    let authType: 'bearer' | 'basic' | 'hmac' | 'hmac-bybit' | 'hmac-okx' | 'headers';
 
-    // Auth type
-    const authTypeInput = await rl.question('Auth type (bearer/hmac/hmac-bybit/hmac-okx/headers): ');
-    const authType = authTypeInput.trim().toLowerCase() as 'bearer' | 'hmac' | 'hmac-bybit' | 'hmac-okx' | 'headers';
+    if (template) {
+      // Use template from directory
+      console.log(`\n📦 Using template for ${template.name}`);
+      console.log(`   ${template.description}`);
+      if (template.docs) {
+        console.log(`   Docs: ${template.docs}`);
+      }
+      console.log('');
+      
+      baseUrl = template.baseUrl;
+      authType = template.auth.type;
+      
+      // Handle services with placeholder URLs (like Supabase)
+      if (baseUrl.includes('<')) {
+        baseUrl = await rl.question(`Base URL (template: ${baseUrl}): `);
+        baseUrl = baseUrl.trim();
+      }
+    } else {
+      // Manual configuration
+      console.log('\n📝 Manual service configuration');
+      
+      // Base URL
+      baseUrl = options.url || '';
+      if (!baseUrl) {
+        baseUrl = await rl.question('Base URL: ');
+        baseUrl = baseUrl.trim();
+      }
 
-    if (!['bearer', 'hmac', 'hmac-bybit', 'hmac-okx', 'headers'].includes(authType)) {
-      console.error('❌ Invalid auth type. Must be bearer, hmac, hmac-bybit, hmac-okx, or headers');
-      rl.close();
-      process.exit(1);
+      if (!baseUrl || !baseUrl.startsWith('http')) {
+        console.error('❌ Invalid base URL. Must start with http:// or https://');
+        rl.close();
+        process.exit(1);
+      }
+
+      // Auth type
+      const authTypeInput = await rl.question('Auth type (bearer/basic/hmac/hmac-bybit/hmac-okx/headers): ');
+      authType = authTypeInput.trim().toLowerCase() as typeof authType;
+
+      if (!['bearer', 'basic', 'hmac', 'hmac-bybit', 'hmac-okx', 'headers'].includes(authType)) {
+        console.error('❌ Invalid auth type');
+        rl.close();
+        process.exit(1);
+      }
     }
 
     // Build auth config
@@ -79,6 +132,23 @@ export async function addCommand(
       auth = {
         type: 'bearer',
         key: apiKey
+      };
+    } else if (authType === 'basic') {
+      const username = await rl.question('Username/Account ID: ');
+      const password = await rl.question('Password/Auth Token: ');
+
+      if (!username || !password) {
+        console.error('❌ Username and password are required for basic auth');
+        rl.close();
+        process.exit(1);
+      }
+
+      // For basic auth, we encode credentials as a special bearer token
+      // The MCP server will need to handle this
+      const encoded = Buffer.from(`${username.trim()}:${password.trim()}`).toString('base64');
+      auth = {
+        type: 'bearer',
+        key: `Basic ${encoded}`
       };
     } else if (authType === 'hmac' || authType === 'hmac-bybit') {
       const apiKey = await rl.question('API key: ');
