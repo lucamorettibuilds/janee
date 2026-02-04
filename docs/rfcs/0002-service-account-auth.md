@@ -52,21 +52,7 @@ The `credentials` field contains the full service account JSON, encrypted with J
 
 The `scopes` field specifies OAuth scopes to request. Different Google APIs require different scopes.
 
-### Alternative: File Reference
-
-```yaml
-auth:
-  type: service-account
-  keyFile: ~/.janee/keys/ga-service-account.json
-  scopes:
-    - https://www.googleapis.com/auth/analytics.readonly
-```
-
-**Tradeoffs:**
-- File reference: Familiar to users, but another file to manage and secure
-- Embedded: Single config file, consistent with existing Janee patterns
-
-**Recommendation:** Support both. Default to embedded for new setups, allow file reference for users migrating existing service accounts.
+**Decision:** Embedded only. No file references. Single config file, consistent with existing Janee patterns. Users migrating existing service accounts can paste the JSON content during `janee add`.
 
 ### Runtime Behavior
 
@@ -94,17 +80,18 @@ Google access tokens are valid for 1 hour. Janee should:
 ### CLI: Adding Service Accounts
 
 ```bash
-# From file
 janee add google-analytics \
   --base-url https://analyticsdata.googleapis.com \
   --auth-type service-account \
-  --key-file ~/Downloads/my-service-account.json \
   --scope https://www.googleapis.com/auth/analytics.readonly
-
-# Interactive (paste JSON)
-janee add google-analytics --auth-type service-account
-# Prompts for JSON content, scopes
 ```
+
+This prompts for the service account JSON (paste contents). Janee then:
+1. Validates required fields (`private_key`, `client_email`, `token_uri`)
+2. **Tests authentication** — attempts token exchange with Google
+3. If successful, encrypts and stores; if not, shows error and aborts
+
+Testing on add catches bad credentials immediately, not later when the agent tries to use the service.
 
 ### Example: Google Analytics Query
 
@@ -205,11 +192,11 @@ Don't proxy Google requests; always use handoff mode (RFC-0001) for Google servi
 
 **Rejected:** Handoff has more moving parts (temp files, env vars). Proxy is cleaner when it works, and it works for Google's REST APIs.
 
-## Open Questions
+## Decisions
 
-1. **Should Janee validate the service account JSON on add?** (Check required fields, maybe test auth)
-2. **How to handle multiple Google projects?** (Probably just multiple services)
-3. **Scope presets — worth it?** (Leaning no for v1)
+1. **Validate on add?** — Yes. Check required fields AND test authentication. Fail fast, not at runtime.
+2. **Multiple Google projects?** — Multiple services. `google-analytics-prod`, `google-analytics-staging`, etc.
+3. **Scope presets?** — No. Explicit scopes only. Keep it simple.
 
 ## Next Steps
 
