@@ -1,24 +1,24 @@
 # Using Janee with Codex CLI
 
-This guide walks you through setting up Janee as an MCP server for [Codex CLI](https://developers.openai.com/codex/cli/), OpenAI's coding agent.
+This guide walks you through setting up Janee as an MCP server for [Codex CLI](https://github.com/openai/codex), OpenAI's open-source coding agent.
 
-## Why use Janee with Codex CLI?
+## Why use Janee with Codex?
 
-Codex CLI can interact with external APIs, but managing credentials is tricky:
+When Codex needs to interact with external APIs (GitHub, Stripe, databases, etc.), you typically have to share credentials somehow. Common approaches have problems:
 
-- **Pasting API keys in prompts** — Keys end up in logs and model context
-- **Environment variables** — Work but aren't portable or audited
-- **Manual API calls** — Defeats the purpose of AI assistance
+- **Environment variables** — Keys sit in plaintext in your shell config
+- **Pasting in prompts** — Keys end up in context and logs
+- **Hardcoded in scripts** — Keys get committed to repos
 
 Janee solves this by:
 - Storing credentials **encrypted at rest**
-- Handling authentication **transparently** (Codex never sees raw keys)
+- Handling authentication **transparently** (the agent never sees raw keys)
 - **Logging every request** for audit trails
 - Supporting multiple services in one config
 
 ## Prerequisites
 
-- [Codex CLI](https://developers.openai.com/codex/cli/) installed
+- [Codex CLI](https://github.com/openai/codex) installed
 - [Node.js](https://nodejs.org) 18+ installed
 - A terminal
 
@@ -62,9 +62,15 @@ janee add openai --base-url https://api.openai.com
 janee add myservice --base-url https://api.example.com
 ```
 
-## Step 3: Configure Codex CLI
+## Step 3: Configure Codex
 
-Codex CLI uses TOML for MCP configuration. Edit `~/.codex/config.toml`:
+Codex uses a TOML config file. The location depends on your OS:
+
+- **macOS**: `~/Library/Application Support/codex/config.toml`
+- **Linux**: `~/.config/codex/config.toml`
+- **Windows**: `%APPDATA%\codex\config.toml`
+
+Add Janee to the MCP servers section:
 
 ```toml
 [mcp_servers.janee]
@@ -74,18 +80,18 @@ args = ["serve"]
 
 If `janee` isn't in your PATH, use the full path:
 
+```bash
+# Find the full path
+which janee
+```
+
 ```toml
 [mcp_servers.janee]
 command = "/usr/local/bin/janee"
 args = ["serve"]
 ```
 
-Find the full path with:
-```bash
-which janee
-```
-
-### Alternative: npx
+### Using npx
 
 If you prefer not to install globally:
 
@@ -95,35 +101,44 @@ command = "npx"
 args = ["@true-and-useful/janee", "serve"]
 ```
 
-### Configuration is shared
+## Step 4: Restart Codex
 
-The MCP configuration is shared between Codex CLI and the Codex IDE extension. Configure once, use in both.
-
-## Step 4: Verify the connection
-
-Start Codex and check that Janee is connected:
-
-```bash
-codex
-```
-
-You should see Janee's tools available in the session.
+If Codex is running, restart it for the MCP settings to take effect.
 
 ## Step 5: Test it
 
-In a Codex session, try:
+Start a Codex session and try:
 
-```
-> List my GitHub repositories
+```bash
+codex "List my GitHub repositories"
 ```
 
 or
 
-```
-> Show me my recent GitHub notifications
+```bash
+codex "Show me my recent Stripe charges"
 ```
 
-Codex should use Janee to make the API call without you needing to provide credentials.
+Codex will use Janee to make API calls without you needing to provide credentials.
+
+## Config file example
+
+Here's a complete `config.toml` with Janee configured:
+
+```toml
+# Codex CLI configuration
+
+model = "o4-mini"
+
+[mcp_servers.janee]
+command = "janee"
+args = ["serve"]
+
+# You can add other MCP servers too
+# [mcp_servers.other]
+# command = "other-mcp-server"
+# args = ["start"]
+```
 
 ## Troubleshooting
 
@@ -135,8 +150,8 @@ Codex can't find the `janee` executable. Either:
 
 ### MCP server not connecting
 
-1. Check that `config.toml` is valid TOML (watch for quoting issues)
-2. Verify the file location: `~/.codex/config.toml`
+1. Check config.toml syntax (TOML is sensitive to formatting)
+2. Verify Janee works standalone: `janee serve` (should start without errors)
 3. Restart Codex completely
 
 ### Authentication errors
@@ -152,38 +167,61 @@ janee add github
 Janee logs all requests for debugging:
 
 ```bash
-janee logs
-janee logs -f  # tail mode
+# Today's requests
+cat ~/.janee/logs/$(date +%Y-%m-%d).jsonl
 ```
 
 ## Example: GitHub workflow
 
 Once configured, you can ask Codex things like:
 
-- "Create a new issue in my-repo titled 'Bug fix needed'"
-- "Show me open PRs in organization/repo"
-- "What are my assigned issues?"
+```bash
+codex "Create a new issue in my-repo titled 'Bug fix needed'"
+codex "Show me open PRs in organization/repo"
+codex "What are my assigned issues?"
+```
 
 Codex will use Janee to authenticate with GitHub automatically.
 
-## Example: Stripe workflow
+## Example: Multi-service workflow
+
+Set up multiple services:
 
 ```bash
+janee add github
 janee add stripe --base-url https://api.stripe.com/v1
-# Enter your Stripe secret key when prompted
+janee add notion --base-url https://api.notion.com/v1
 ```
 
-Then ask:
-- "List my recent Stripe customers"
-- "Show me the last 5 charges"
-- "Create a customer with email test@example.com"
+Then use them all:
+
+```bash
+codex "Check my GitHub notifications and list recent Stripe charges"
+```
 
 ## Security notes
 
 - Credentials are encrypted using your system keychain where available
 - Janee never sends credentials to AI models — only the API responses
-- All requests are logged for audit purposes (including request bodies as of v0.3.0)
+- All requests are logged for audit purposes (v0.3.0+ logs request bodies)
 - You can revoke access anytime with `janee remove <service>`
+
+## Shared config with VS Code extension
+
+The Codex CLI and VS Code Codex extension share the same config file. If you set up Janee for the CLI, it'll work in VS Code too (and vice versa).
+
+## Managing services
+
+```bash
+# List all configured services
+janee list
+
+# Remove a service
+janee remove github
+
+# Re-add with different credentials
+janee add github
+```
 
 ## Next steps
 

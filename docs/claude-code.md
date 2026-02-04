@@ -1,14 +1,14 @@
 # Using Janee with Claude Code
 
-This guide walks you through setting up Janee as an MCP server for [Claude Code](https://code.claude.com), Anthropic's coding CLI.
+This guide walks you through setting up Janee as an MCP server for [Claude Code](https://docs.anthropic.com/en/docs/claude-code), Anthropic's CLI coding agent.
 
 ## Why use Janee with Claude Code?
 
-Claude Code can interact with external APIs, but managing credentials is tricky:
+When Claude Code needs to interact with external APIs (GitHub, Stripe, databases, etc.), you typically have to share credentials somehow. Common approaches have problems:
 
-- **Pasting API keys in prompts** — Keys end up in logs and model context
-- **Environment variables** — Work but aren't portable or audited
-- **Manual API calls** — Defeats the purpose of AI assistance
+- **Environment variables** — Keys sit in plaintext in your shell config
+- **Pasting in prompts** — Keys end up in context and logs
+- **Hardcoded in scripts** — Keys get committed to repos
 
 Janee solves this by:
 - Storing credentials **encrypted at rest**
@@ -18,7 +18,7 @@ Janee solves this by:
 
 ## Prerequisites
 
-- [Claude Code](https://code.claude.com) installed
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed (`npm install -g @anthropic-ai/claude-code`)
 - [Node.js](https://nodejs.org) 18+ installed
 - A terminal
 
@@ -62,19 +62,27 @@ janee add openai --base-url https://api.openai.com
 janee add myservice --base-url https://api.example.com
 ```
 
-## Step 3: Configure Claude Code
+## Step 3: Add Janee to Claude Code
 
-### Option A: CLI command (recommended)
+Use the `claude mcp add` command:
 
 ```bash
 claude mcp add janee --command janee --args serve --scope user
 ```
 
-This adds Janee globally for all projects. Use `--scope project` for project-specific config.
+This registers Janee as an MCP server available to all your Claude Code sessions.
 
-### Option B: Edit config file directly
+### Alternative: Project scope
 
-Edit `~/.claude.json` and add Janee to the `mcpServers` section:
+To add Janee only for the current project:
+
+```bash
+claude mcp add janee --command janee --args serve --scope project
+```
+
+### Alternative: Manual config
+
+You can also edit `~/.claude.json` directly:
 
 ```json
 {
@@ -89,87 +97,61 @@ Edit `~/.claude.json` and add Janee to the `mcpServers` section:
 
 If `janee` isn't in your PATH, use the full path:
 
-```json
-{
-  "mcpServers": {
-    "janee": {
-      "command": "/usr/local/bin/janee",
-      "args": ["serve"]
-    }
-  }
-}
-```
-
-Find the full path with:
 ```bash
+# Find the full path
 which janee
+
+# Then use it
+claude mcp add janee --command /usr/local/bin/janee --args serve --scope user
 ```
 
-### Alternative: npx
+## Step 4: Verify the setup
 
-If you prefer not to install globally:
-
-```bash
-claude mcp add janee --command npx --args @true-and-useful/janee,serve --scope user
-```
-
-Or in the config file:
-
-```json
-{
-  "mcpServers": {
-    "janee": {
-      "command": "npx",
-      "args": ["@true-and-useful/janee", "serve"]
-    }
-  }
-}
-```
-
-## Step 4: Verify the connection
-
-List your configured MCP servers:
+Check that Janee is registered:
 
 ```bash
 claude mcp list
 ```
 
-You should see `janee` in the list.
+You should see `janee` in the output.
 
 ## Step 5: Test it
 
 Start a Claude Code session and try:
 
-```
-> List my GitHub repositories
+```bash
+claude "List my GitHub repositories"
 ```
 
 or
 
-```
-> Show me my recent GitHub notifications
+```bash
+claude "Show me my recent Stripe charges"
 ```
 
-Claude should use Janee to make the API call without you needing to provide credentials.
+Claude Code will use Janee to make API calls without you needing to provide credentials.
+
+## Using with npx
+
+If you prefer not to install globally:
+
+```bash
+claude mcp add janee --command npx --args "@true-and-useful/janee serve" --scope user
+```
 
 ## Troubleshooting
 
 ### "Command not found" error
 
 Claude Code can't find the `janee` executable. Either:
-1. Use the full path in the config
+1. Use the full path when adding the MCP server
 2. Ensure Node.js bin directory is in your PATH
 
-### MCP server not appearing
+### MCP server not connecting
 
-```bash
-# Check your config
-claude mcp list
-
-# Re-add if needed
-claude mcp remove janee
-claude mcp add janee --command janee --args serve --scope user
-```
+1. Check the server is registered: `claude mcp list`
+2. Remove and re-add: `claude mcp remove janee && claude mcp add janee --command janee --args serve --scope user`
+3. Verify Janee works standalone: `janee serve` (should start without errors)
 
 ### Authentication errors
 
@@ -184,42 +166,60 @@ janee add github
 Janee logs all requests for debugging:
 
 ```bash
-janee logs
-janee logs -f  # tail mode
+# Today's requests
+cat ~/.janee/logs/$(date +%Y-%m-%d).jsonl
 ```
 
 ## Example: GitHub workflow
 
-Once configured, you can ask Claude things like:
-
-- "Create a new issue in my-repo titled 'Bug fix needed'"
-- "Show me open PRs in organization/repo"
-- "What are my assigned issues?"
-
-Claude will use Janee to authenticate with GitHub automatically.
-
-## Example: Stripe workflow
+Once configured, you can ask Claude Code things like:
 
 ```bash
-janee add stripe --base-url https://api.stripe.com/v1
-# Enter your Stripe secret key when prompted
+claude "Create a new issue in my-repo titled 'Bug fix needed'"
+claude "Show me open PRs in organization/repo"
+claude "What are my assigned issues?"
 ```
 
-Then ask:
-- "List my recent Stripe customers"
-- "Show me the last 5 charges"
-- "Create a customer with email test@example.com"
+Claude Code will use Janee to authenticate with GitHub automatically.
+
+## Example: Multi-service workflow
+
+Set up multiple services:
+
+```bash
+janee add github
+janee add stripe --base-url https://api.stripe.com/v1
+janee add notion --base-url https://api.notion.com/v1
+```
+
+Then use them all in one session:
+
+```bash
+claude "Check my GitHub notifications, list recent Stripe charges, and show my Notion databases"
+```
 
 ## Security notes
 
 - Credentials are encrypted using your system keychain where available
 - Janee never sends credentials to AI models — only the API responses
-- All requests are logged for audit purposes (including request bodies as of v0.3.0)
+- All requests are logged for audit purposes (v0.3.0+ logs request bodies)
 - You can revoke access anytime with `janee remove <service>`
+
+## Managing MCP servers
+
+```bash
+# List all MCP servers
+claude mcp list
+
+# Remove Janee
+claude mcp remove janee
+
+# Check Janee services
+janee list
+```
 
 ## Next steps
 
 - [Add more services](/docs/services.md)
 - [Configure audit logging](/docs/audit.md)
 - [Use with Cursor](/docs/cursor.md)
-- [Use with Codex CLI](/docs/codex.md)
