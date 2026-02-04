@@ -339,8 +339,9 @@ Agent never touches the real key.
 Works with any agent that speaks MCP:
 
 - **OpenClaw** — Native plugin (`@true-and-useful/janee-openclaw`)
-- **Claude Desktop** — MCP client
-- **Cursor** — MCP client
+- **Cursor** — [Setup guide](/docs/cursor.md)
+- **Claude Code** — [Setup guide](/docs/claude-code.md)
+- **Codex CLI** — [Setup guide](/docs/codex.md)
 - **Any MCP client** — just point at `janee serve`
 
 ---
