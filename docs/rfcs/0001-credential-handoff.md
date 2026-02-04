@@ -1,12 +1,19 @@
 # RFC 0001: Credential Handoff Mode
 
-**Status:** Proposed  
+**Status:** Proposed (Under Revision)  
 **Author:** Janee Agent  
-**Date:** 2026-02-04
+**Date:** 2026-02-04  
+**Updated:** 2026-02-04 (added wrapper execution alternative)
 
 ## Summary
 
-Add a `handoff` capability mode that allows agents to request actual credentials for tools that can't be proxied (CLIs, browser auth, native SDKs). The agent receives the key plus injected instructions not to persist or share it. All handoffs are logged and audited. Optional approval gates available for high-risk services.
+Add support for tools that can't be proxied (CLIs, browser auth, native SDKs). Two approaches under consideration:
+
+1. **Direct handoff** - Agent requests actual credential, receives it with injected instructions. Simple but breaks core security property (agent sees key) and causes credentials-in-logs issues.
+
+2. **Wrapper execution** (potentially better) - Janee executes commands with credentials injected via env, agent sees output but never the key. Preserves core security property while enabling CLI usage.
+
+This RFC explores both approaches. Wrapper execution might be the right answer.
 
 ## Motivation
 
@@ -117,10 +124,21 @@ Once the agent has the credential, it **can** still:
 We're relying on:
 1. **Injected instructions** - LLM is prompted not to misuse it
 2. **Audit trail** - We know when handoffs happen
-3. **Revocation** - Human can revoke sessions manually
-4. **Expiration** - Sessions auto-expire
+3. **Revocation** - Human can revoke sessions manually (but agent still has the key in context)
+4. **Expiration** - This is **ornamental** - once the key is in the agent's context, "expiration" doesn't actually revoke access. It's an audit checkpoint and psychological signal, not real security.
 
 This is **way better than `.env` files** (no audit, no revocation, no expiration) but **not as secure as proxy mode** (agent never sees key).
+
+### The Credentials-in-Logs Problem
+
+Returning credentials as tool results means they end up in:
+- Agent transcripts (session history)
+- Debug logs (if enabled)
+- Framework logs (depending on MCP client)
+
+Even with "don't persist" instructions, the credential appears in log files by virtue of being a tool response. This is a **significant** security issue - logs get backed up, shared for debugging, stored indefinitely.
+
+This might be an anti-pattern. See "Wrapper Execution Mode" alternative below for a better approach.
 
 ### When to Use Handoff vs Proxy
 
@@ -146,70 +164,191 @@ This is a **lower security tier**. Services that allow handoff should be conside
 
 ## Alternatives Considered
 
-### 1. Just use `.env` files
+### 1. Wrapper Execution Mode (Potentially Better Approach)
+
+Instead of handing the credential to the agent, Janee **executes the command** with credentials injected:
+
+```bash
+# Agent calls this tool:
+janee_exec(service="twitter", command=["bird", "tweet", "Hello world"])
+
+# Janee runs:
+TWITTER_API_KEY=<real-key> bird tweet "Hello world"
+
+# Agent sees stdout/stderr but never sees the key
+```
+
+**Advantages:**
+- **Agent never sees the credential** - preserves Janee's core security property
+- **No credentials in logs** - tool response is command output, not the key
+- **Works for most CLIs** - they read from env vars or stdin
+- **Still auditable** - we log command + service, just not the key itself
+
+**Challenges:**
+- Some CLIs write credentials to config files (e.g., `~/.birdrc`)
+- Agent can't inspect the key for debugging
+- Requires careful env isolation (don't leak to other processes)
+- Some tools need interactive input (but we can handle with stdin piping)
+
+**Config example:**
+```yaml
+capabilities:
+  twitter_cli:
+    service: twitter
+    mode: exec  # vs 'handoff' or 'proxy'
+    allowCommands: ["bird"]  # Whitelist executables
+    env:
+      TWITTER_API_KEY: "{{credential}}"  # Template
+```
+
+**This might be the right answer.** It keeps "agent never sees key" intact while enabling CLI usage. Should prototype this before committing to direct handoff.
+
+### 2. Environment Injection (Hybrid Approach)
+
+Tell the agent credentials are available in env, but don't return them as tool results:
+
+```bash
+# Agent calls:
+janee_prepare_env(service="twitter")
+
+# Tool returns:
+{ "ready": true, "envVars": ["TWITTER_API_KEY"] }
+
+# Agent runs command knowing env is set:
+exec(command="bird tweet 'hello'", env=process.env)
+```
+
+**Problem:** Agent's exec environment must be Janee-controlled. Doesn't work with agent frameworks that sandbox exec separately.
+
+### 3. One-Time Fetch URL
+
+Return a localhost URL the CLI can fetch directly:
+
+```bash
+# Tool returns:
+{ "credentialUrl": "http://localhost:9999/fetch/abc123" }
+
+# Agent configures CLI:
+bird config --api-key-url http://localhost:9999/fetch/abc123
+```
+
+**Problem:** Most CLIs don't support fetching keys from URLs. Would need to build a wrapper script per CLI.
+
+### 4. Just use `.env` files
 
 **Problem:** No audit trail, no revocation, no expiration, credentials persist across sessions. We'd be building a secrets manager that doesn't manage secrets.
 
-### 2. Only support browser automation (Playwright, Puppeteer)
+### 5. Only support browser automation (Playwright, Puppeteer)
 
 **Problem:** Doesn't help with CLIs, native SDKs, OAuth flows. Too narrow.
 
-### 3. Require human approval for every handoff
+### 6. Require human approval for every handoff
 
 **Problem:** Breaks agent autonomy. If the human has to approve every CLI invocation, why have an agent?
 
 Approval should be **optional** based on risk tolerance. Low-risk services (read-only APIs) can auto-approve; high-risk services (financial APIs) can require approval.
 
-### 4. Build a credential proxy that intercepts CLI config files
+### 7. Build a credential proxy that intercepts CLI config files
 
 **Problem:** Every CLI has different config formats. Unmaintainable. Also very fragile (what if CLI updates its config schema?).
 
-### 5. Don't support these tools at all
+### 8. Don't support these tools at all
 
 **Problem:** Leaves huge gaps in agent capabilities. Twitter automation is a common use case, can't just ignore it.
 
 ## Implementation Plan
 
-### Phase 1: Core Handoff (MVP)
+### Phase 1: Wrapper Execution (MVP)
+- [ ] Add `mode: exec` to capability config
+- [ ] Implement `janee_exec` MCP tool
+  - Takes: service, command (array), optional stdin
+  - Returns: stdout, stderr, exit code
+- [ ] Environment variable templating (`{{credential}}`)
+- [ ] Command whitelisting (`allowCommands`)
+- [ ] Audit logging (command + service, not the key)
+- [ ] Test with Twitter `bird` CLI
+
+### Phase 2: Advanced Wrapper Features
+- [ ] Interactive command support (stdin/stdout piping)
+- [ ] Temp config directory isolation
+- [ ] Working directory control
+- [ ] Timeout handling
+- [ ] Process isolation (prevent env leakage)
+
+### Phase 3: Direct Handoff (if needed)
 - [ ] Add `mode: handoff` to capability config
 - [ ] Implement `janee_request_credential` MCP tool
-- [ ] Add handoff audit logging
 - [ ] Session tracking in `~/.janee/handoff-sessions.json`
-- [ ] `janee sessions` lists handoff sessions
-- [ ] `janee revoke --session` manual revocation
+- [ ] Audit logging with credentials-in-logs warnings
+- [ ] Optional approval flow (`requiresApproval: true`)
 
-### Phase 2: Approval Flow
-- [ ] Add `requiresApproval: true` config option
-- [ ] Interactive approval prompt (CLI)
-- [ ] Pre-approval for non-interactive contexts
+Decision point: Only build Phase 3 if Phase 1/2 prove insufficient for real use cases.
 
-### Phase 3: Advanced Features
-- [ ] `expiresAfter` session expiration
-- [ ] Auto-revocation on expiry
-- [ ] `requiresReason: true` enforcement
-- [ ] Handoff usage analytics (how often, which services, etc.)
+## Decision: Handoff vs Wrapper Execution?
+
+### The Core Question
+
+Should we break Janee's fundamental security property ("agent never sees key") to support CLIs?
+
+**Direct handoff says:** Yes, for tools that require it. Accept the tradeoff, add guardrails (audit, instructions, expiration).
+
+**Wrapper execution says:** No. Keep the property intact by having Janee run the command instead of the agent.
+
+### Recommendation: Start with Wrapper Execution
+
+Prototype the wrapper approach first because:
+1. **Preserves core security property** - agent never sees key
+2. **Solves credentials-in-logs problem** - tool response is stdout, not credential
+3. **Works for majority of CLIs** - most read from env vars
+4. **Falls back naturally** - if wrapper doesn't work for a tool, we can add handoff later
+
+If wrapper execution proves insufficient (e.g., browser automation, interactive CLIs with unusual requirements), then consider adding direct handoff as a **higher-risk tier**.
 
 ## Open Questions
 
-1. **Should we inject instructions into the agent's prompt or just include them in the response?**
+### For Wrapper Execution:
+
+1. **How do we handle CLIs that write credentials to config files?**
+   - Example: `bird` might persist key to `~/.birdrc`
+   - Options: Intercept config writes, use temp config dirs, or accept it as equivalent risk to handoff
+
+2. **Should we support interactive commands (stdin/stdout)?**
+   - Example: `git push` prompting for credentials
+   - Need to pipe stdin/stdout carefully
+
+3. **How do we prevent env leakage to child processes?**
+   - Clear env after command completes
+   - Use isolated process spawning
+
+### For Direct Handoff (if we build it):
+
+4. **Should we inject instructions into the agent's prompt or just include them in the response?**
    - Prompt injection is more reliable (agent sees it before using key)
    - Response-only is simpler (no framework integration needed)
 
-2. **Should handoff sessions be capability-scoped or service-scoped?**
+5. **Should handoff sessions be capability-scoped or service-scoped?**
    - Capability-scoped: more granular, agent specifies intent
    - Service-scoped: simpler, one session per service
 
-3. **Should we support key rotation during active handoff sessions?**
+6. **Should we support key rotation during active handoff sessions?**
    - Useful for long-running sessions
    - Adds complexity (agent needs to handle credential updates)
 
 ## Success Metrics
 
-- Handoff mode enables Twitter automation (bird CLI)
+### For Wrapper Execution:
+- Twitter automation works via `janee_exec(service="twitter", command=["bird", "tweet", "..."])`
+- Agent never sees credentials (verified by inspecting tool responses)
+- No credentials in session transcripts or debug logs
+- Commands execute successfully with proper env injection
+- Audit logs show command execution without exposing keys
+
+### For Direct Handoff (if built):
+- Agent can request credentials when wrapper won't work
 - Audit logs show when/why credentials were handed off
-- Human can revoke handoff sessions manually
-- Zero credential leaks to logs or external services (honor system, but we can check audit logs for misuse patterns)
+- Credentials appear in tool responses (accept this tradeoff)
+- Instructions injected successfully (LLM acknowledges them)
 
 ---
 
-**Next Steps:** Implement Phase 1 (core handoff) and test with Twitter CLI use case.
+**Next Steps:** Prototype wrapper execution (Phase 1) and test with Twitter CLI use case. Validate that "agent never sees key" property holds.
