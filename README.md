@@ -29,6 +29,36 @@ Janee is an [MCP](https://modelcontextprotocol.io) server that manages API secre
 
 ---
 
+## Configure Once, Use Everywhere
+
+Set up your APIs in Janee once:
+
+```yaml
+services:
+  stripe:
+    baseUrl: https://api.stripe.com
+    auth: { type: bearer, key: sk_live_xxx }
+  github:
+    baseUrl: https://api.github.com
+    auth: { type: bearer, key: ghp_xxx }
+  openai:
+    baseUrl: https://api.openai.com
+    auth: { type: bearer, key: sk-xxx }
+```
+
+Now **every agent** that connects to Janee can use them:
+
+- **Claude Desktop** — access your APIs
+- **Cursor** — access your APIs  
+- **OpenClaw** — access your APIs
+- **Any MCP client** — access your APIs
+
+No more copying keys between tools. No more "which agent has which API configured?" Add a new agent? It already has access to everything. Revoke a key? Update it once in Janee.
+
+**One config. Every agent. Full audit trail.**
+
+---
+
 ## Quick Start
 
 ### Install
@@ -312,6 +342,12 @@ Works with any agent that speaks MCP:
 - **Claude Desktop** — MCP client
 - **Cursor** — MCP client
 - **Any MCP client** — just point at `janee serve`
+
+---
+
+## Contributing
+
+We welcome contributions! See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for guidelines.
 
 ---
 
