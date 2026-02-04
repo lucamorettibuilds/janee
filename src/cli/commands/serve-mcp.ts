@@ -46,7 +46,7 @@ export async function serveMCPCommand(): Promise<void> {
     const config = loadYAMLConfig();
     const sessionManager = new SessionManager();
     const auditLogger = new AuditLogger(getAuditDir(), {
-      logBodies: config.server.logBodies
+      logBodies: config.server?.logBodies ?? true
     });
 
     // Load initial config
