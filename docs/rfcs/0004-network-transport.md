@@ -85,9 +85,9 @@ Janee's core value prop is "keep secrets out of the agent's environment" — but
 ### Goals
 
 1. **Preserve stdio as default** — Don't break existing workflows
-2. **Support HTTP/SSE transport** — Enable network-based connections
+2. **Support HTTP/SSE transport** — Enable network-based connections for on-host container communication
 3. **Minimal API changes** — Leverage MCP SDK built-in transports
-4. **Secure by default** — No auth initially (localhost-only), opt-in auth later
+4. **Localhost-only by default** — Bind to `localhost` by default; no public IP support
 
 ### MCP SDK Transport Support
 
@@ -231,7 +231,7 @@ Add optional `url` field:
 
 **Configuration Validation:**
 - `url` and `command` are mutually exclusive (if both present, `url` takes precedence)
-- Supported URL schemes: `http://`, `https://` (Phase 1)
+- Supported URL schemes: `http://` only (localhost/bridge networking, no TLS)
 - Connection timeout: 30 seconds (configurable)
 - Retry behavior: Exponential backoff with max 3 attempts
 - If connection fails after retries, error is propagated to agent (no silent fallback to stdio)
@@ -355,7 +355,7 @@ Agent never sees the Stripe API key!
 
 ## Security Considerations
 
-### Phase 1 Security Model (Localhost-Only)
+### Security Model (Localhost/Bridge Networking Only)
 
 **Default binding: `localhost`**
 ```bash
@@ -390,31 +390,36 @@ janee serve --transport sse --port 9101 --host 0.0.0.0
 
 For most use cases, keep `--host localhost` and use platform-specific host access (`host.docker.internal` on macOS, bridge gateway IP on Linux).
 
-### Phase 2: Authentication (Future)
+### Out of Scope: Public Network Access & Authentication
 
-Add `--auth-token` flag:
+**Explicitly NOT supported:** Public IP binding and authentication are out of scope for this RFC.
 
+Janee network transport is designed exclusively for **on-host container-to-host communication** using localhost or Docker bridge networking. The use case is:
+
+- Agent container on **same physical machine** as Janee
+- Connection via `localhost`, `host.docker.internal`, or bridge gateway IP (172.17.0.1)
+- Trust boundary is the physical host
+
+**We will NOT implement:**
+- Bearer token authentication
+- TLS/HTTPS support
+- Public IP exposure scenarios
+- Cross-host networking
+- Multi-tenant access control
+
+**Rationale:**
+- Janee is a **single-user local tool**, not a network service
+- Adding authentication increases attack surface and complexity
+- Users who need cross-host access should use SSH tunnels, VPNs, or a proper secrets service (HashiCorp Vault)
+- Binding to public IPs defeats Janee's security model (keep secrets local)
+
+If remote access is needed, the recommended approach is SSH port forwarding:
 ```bash
-janee serve --transport sse --port 9100 --auth-token "secret-token-123"
+# On remote host
+ssh -L 9101:localhost:9101 user@host
+
+# Then connect to localhost:9101
 ```
-
-Plugin config:
-```yaml
-config:
-  url: "http://janee.example.com:9100/mcp"
-  authToken: "secret-token-123"
-```
-
-**Implementation:**
-- HTTP Bearer token authentication
-- Validated on every request
-- Token stored in Janee config (encrypted)
-- Rotate via `janee config set auth-token`
-
-**When to add auth:**
-- If users want to expose Janee over public networks
-- If Janee runs as a shared service (multi-agent systems)
-- Not needed for localhost or trusted private networks
 
 ### Audit Logging
 
