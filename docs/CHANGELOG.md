@@ -4,6 +4,17 @@ All notable changes to Janee will be documented in this file.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-02-10
+
+### Fixed
+
+- **MEXC Authentication** — Fix `makeAPIRequest()` to include query parameters in HTTP requests (#45)
+  - Bug: MEXC API calls were failing with `{"code":400,"msg":"api key required"}`
+  - Root cause: `http.request(url, options)` wasn't including `path` in options, causing query params (timestamp, signature) to be lost
+  - Fix: Explicitly set `path: targetUrl.pathname + targetUrl.search` in request options
+  - Impact: MEXC API now works correctly through Janee proxy
+  - No impact on other exchanges (OKX, Bybit use header-based auth)
+
 ## [0.7.0] - 2026-02-10
 
 ### Added
