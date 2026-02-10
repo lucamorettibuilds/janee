@@ -4,6 +4,8 @@ All notable changes to Janee will be documented in this file.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-02-10
+
 ### Fixed
 
 - **Service Directory** — Remove Binance from directory (incompatible auth scheme)
