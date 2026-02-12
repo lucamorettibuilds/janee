@@ -340,48 +340,33 @@ async function getSecret(uri: string): Promise<string> {
 **If multiple providers needed:** User must explicitly configure separate services or use different URIs.
 
 
-### V1 Scope: Read-Only Runtime
+### Scope: Read-Only Operations
 
-**Explicit constraints for version 1:**
+The initial implementation focuses on **read operations** - what MCP servers need most:
 
 ```typescript
 interface SecretsProvider {
   readonly name: string;
   readonly type: string;
   
-  // ✅ REQUIRED in v1
   initialize(): Promise<void>;
   getSecret(path: string): Promise<string | null>;
   dispose(): Promise<void>;
   healthCheck(): Promise<{ healthy: boolean; error?: string }>;
-  
-  // ❌ DEFERRED to v2 (optional in interface, but not implemented)
-  setSecret?(path: string, value: string): Promise<void>;
-  deleteSecret?(path: string): Promise<void>;
-  listSecrets?(prefix?: string): Promise<string[]>;
 }
 ```
 
-**V1 limitations:**
+**Why read-only first:**
+- 99% of MCP server use cases are reading secrets
+- Write/delete operations can use provider-native CLIs (Vault CLI, AWS CLI, etc.)
+- Keeps initial implementation focused and testable
 
-1. **Runtime operations**: Read-only (`getSecret` only)
-2. **Write operations**: Deferred to v2 (`setSecret`, `deleteSecret` not implemented)
-3. **List operations**: Deferred to v2 (`listSecrets` not implemented)
-4. **CLI mutations**: Use provider-native tools (Vault CLI, AWS CLI)
+**Future extensions** (when needed):
+- `setSecret(path, value)` - write operations
+- `deleteSecret(path)` - deletion
+- `listSecrets(prefix)` - discovery
 
-**Rationale:**
-- Writing secrets is security-sensitive and varies by provider
-- Most enterprises manage secret creation separately from consumption
-- Read-only scope reduces attack surface
-- Simplifies initial implementation
-
-**V2 roadmap:**
-- CLI commands: `janee secret set`, `janee secret delete`, `janee secret list`
-- Safety features: dry-run mode, confirmation prompts
-- Audit: Log all write operations
-- Provider permissions: Require explicit write grants
-
-## Security Threat Model
+Build the core solid first, extend when users ask for it.
 
 ### Threats and Mitigations
 
