@@ -2,6 +2,26 @@
 
 **Secrets management for AI agents via MCP**
 
+[![npm version](https://img.shields.io/npm/v/@true-and-useful/janee.svg)](https://www.npmjs.com/package/@true-and-useful/janee)
+[![npm downloads](https://img.shields.io/npm/dw/@true-and-useful/janee.svg)](https://www.npmjs.com/package/@true-and-useful/janee)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![GitHub stars](https://img.shields.io/github/stars/rsdouglas/janee.svg?style=social)](https://github.com/rsdouglas/janee)
+
+> Your AI agents need API access to be useful. But they shouldn't have your raw API keys.
+> Janee sits between your agents and your APIs — injecting credentials, enforcing policies, and logging everything.
+
+
+### ✨ Features
+
+| | |
+|---|---|
+| 🔒 **Zero-knowledge agents** | Agents call APIs without ever seeing keys |
+| 📋 **Full audit trail** | Every request logged with timestamp, method, path, status |
+| 🛡️ **Request policies** | Allow/deny rules per capability (e.g., read-only Stripe) |
+| ⏱️ **Session TTLs** | Time-limited access with instant revocation |
+| 🔌 **Works with any MCP client** | Claude Desktop, Cursor, OpenClaw, and more |
+| 🏠 **Local-first** | Keys encrypted on your machine, never sent to a cloud |
+
 ---
 
 ## The Problem
