@@ -35,5 +35,11 @@ export type {
   HealthCheckResult,
 } from './types';
 
+export {
+  SecretError,
+  SecretErrorCode,
+  validateSecretPath,
+} from './types';
+
 export { FilesystemProvider } from './filesystem';
 export { EnvProvider } from './env';

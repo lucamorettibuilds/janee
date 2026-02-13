@@ -5,7 +5,7 @@
  * Resolves provider URIs and manages provider lifecycle.
  */
 
-import { SecretsProvider, ProviderConfig, ProviderFactory, parseProviderURI } from './types';
+import { SecretsProvider, ProviderConfig, ProviderFactory, SecretError, SecretErrorCode, parseProviderURI } from './types';
 import { FilesystemProvider } from './filesystem';
 import { EnvProvider } from './env';
 
@@ -24,7 +24,10 @@ const instances = new Map<string, SecretsProvider>();
  */
 export function registerProviderType(type: string, factory: ProviderFactory): void {
   if (factories.has(type)) {
-    throw new Error(`Provider type "${type}" is already registered`);
+    throw new SecretError(
+      SecretErrorCode.CONFIG_ERROR,
+      `Provider type "${type}" is already registered`
+    );
   }
   factories.set(type, factory);
 }
@@ -36,8 +39,10 @@ export async function createProvider(config: ProviderConfig): Promise<SecretsPro
   const factory = factories.get(config.type);
   if (!factory) {
     const available = Array.from(factories.keys()).join(', ');
-    throw new Error(
-      `Unknown provider type "${config.type}". Available types: ${available}`
+    throw new SecretError(
+      SecretErrorCode.CONFIG_ERROR,
+      `Unknown provider type "${config.type}". Available types: ${available}`,
+      { provider: config.name }
     );
   }
 
@@ -71,8 +76,10 @@ export async function resolveSecret(
   const provider = instances.get(name);
   if (!provider) {
     const available = Array.from(instances.keys()).join(', ');
-    throw new Error(
-      `Provider "${name}" not found. Available providers: ${available}`
+    throw new SecretError(
+      SecretErrorCode.CONFIG_ERROR,
+      `Provider "${name}" not found. Registered providers: ${available}`,
+      { provider: name, secretPath: path }
     );
   }
   
@@ -80,20 +87,24 @@ export async function resolveSecret(
 }
 
 /**
- * Health check all registered providers.
+ * Run health checks on all registered providers.
  */
-export async function healthCheckAll(): Promise<Record<string, { healthy: boolean; error?: string }>> {
-  const results: Record<string, { healthy: boolean; error?: string }> = {};
+export async function healthCheckAll(): Promise<Map<string, { healthy: boolean; error?: string }>> {
+  const results = new Map<string, { healthy: boolean; error?: string }>();
   
   for (const [name, provider] of instances) {
-    results[name] = await provider.healthCheck();
+    try {
+      results.set(name, await provider.healthCheck());
+    } catch (err) {
+      results.set(name, { healthy: false, error: (err as Error).message });
+    }
   }
   
   return results;
 }
 
 /**
- * Dispose all providers (cleanup on shutdown).
+ * Dispose all provider instances and clear registries.
  */
 export async function disposeAll(): Promise<void> {
   const errors: Error[] = [];
@@ -102,20 +113,24 @@ export async function disposeAll(): Promise<void> {
     try {
       await provider.dispose();
     } catch (err) {
-      errors.push(new Error(`Failed to dispose provider "${name}": ${(err as Error).message}`));
+      errors.push(err as Error);
     }
   }
   
   instances.clear();
+  factories.clear();
   
   if (errors.length > 0) {
-    throw new AggregateError(errors, 'Some providers failed to dispose');
+    throw new SecretError(
+      SecretErrorCode.INTERNAL,
+      `Failed to dispose ${errors.length} provider(s): ${errors.map(e => e.message).join('; ')}`
+    );
   }
 }
 
-// Register built-in providers
+// Re-export parseProviderURI from types
+export { parseProviderURI } from './types';
+
+// Register built-in provider types
 registerProviderType('filesystem', (config) => new FilesystemProvider(config));
 registerProviderType('env', (config) => new EnvProvider(config));
-
-export { parseProviderURI } from './types';
-export type { SecretsProvider, ProviderConfig, ProviderFactory, HealthCheckResult } from './types';

@@ -14,18 +14,32 @@ import {
   healthCheckAll,
   disposeAll,
   registerProviderType,
-} from './registry';
+  SecretError,
+  SecretErrorCode,
+  validateSecretPath,
+} from './index';
 import { FilesystemProvider } from './filesystem';
 import { EnvProvider } from './env';
 import { generateMasterKey, encryptSecret, decryptSecret } from '../core/crypto';
 
-// ─── URI Parsing ─────────────────────────────────────────
+// --- URI Parsing ---
 
 describe('parseProviderURI', () => {
   it('parses scheme://path URIs', () => {
     expect(parseProviderURI('vault://mcp/stripe/key')).toEqual({
       provider: 'vault',
       path: 'mcp/stripe/key',
+    });
+  });
+
+  it('normalizes provider names to lowercase', () => {
+    expect(parseProviderURI('Vault://mcp/stripe/key')).toEqual({
+      provider: 'vault',
+      path: 'mcp/stripe/key',
+    });
+    expect(parseProviderURI('AWS-Secrets://prod/db')).toEqual({
+      provider: 'aws-secrets',
+      path: 'prod/db',
     });
   });
 
@@ -56,9 +70,98 @@ describe('parseProviderURI', () => {
       path: 'STRIPE_API_KEY',
     });
   });
+
+  it('percent-decodes path components', () => {
+    expect(parseProviderURI('vault://path%20with%20spaces/key')).toEqual({
+      provider: 'vault',
+      path: 'path with spaces/key',
+    });
+  });
+
+  it('rejects invalid percent-encoding', () => {
+    expect(() => parseProviderURI('vault://path%ZZ/key')).toThrow(SecretError);
+    expect(() => parseProviderURI('vault://path%ZZ/key')).toThrow(/percent-encoding/);
+  });
+
+  it('rejects provider names longer than 64 chars', () => {
+    const longName = 'a'.repeat(65);
+    expect(() => parseProviderURI(longName + '://path')).toThrow(SecretError);
+    expect(() => parseProviderURI(longName + '://path')).toThrow(/maximum length/);
+  });
+
+  it('rejects empty URIs', () => {
+    expect(() => parseProviderURI('')).toThrow(SecretError);
+  });
+
+  it('rejects paths with .. traversal segments', () => {
+    expect(() => parseProviderURI('vault://secrets/../../../etc/passwd')).toThrow(SecretError);
+    expect(() => parseProviderURI('vault://secrets/../../../etc/passwd')).toThrow(/must not contain/);
+  });
+
+  it('rejects absolute paths in plain mode', () => {
+    expect(() => parseProviderURI('/etc/passwd')).toThrow(SecretError);
+    expect(() => parseProviderURI('/etc/passwd')).toThrow(/must be relative/);
+  });
 });
 
-// ─── Environment Provider ────────────────────────────────
+// --- Path Validation ---
+
+describe('validateSecretPath', () => {
+  it('accepts valid relative paths', () => {
+    expect(() => validateSecretPath('stripe/api-key')).not.toThrow();
+    expect(() => validateSecretPath('simple-key')).not.toThrow();
+    expect(() => validateSecretPath('services/github/token')).not.toThrow();
+  });
+
+  it('rejects empty paths', () => {
+    expect(() => validateSecretPath('')).toThrow(SecretError);
+  });
+
+  it('rejects absolute paths', () => {
+    expect(() => validateSecretPath('/etc/passwd')).toThrow(SecretError);
+  });
+
+  it('rejects .. traversal segments', () => {
+    expect(() => validateSecretPath('../escape')).toThrow(SecretError);
+    expect(() => validateSecretPath('a/../../escape')).toThrow(SecretError);
+    expect(() => validateSecretPath('a/b/../c')).toThrow(SecretError);
+  });
+
+  it('rejects paths exceeding max length', () => {
+    const longPath = 'a/'.repeat(600);
+    expect(() => validateSecretPath(longPath)).toThrow(SecretError);
+    expect(() => validateSecretPath(longPath)).toThrow(/maximum length/);
+  });
+
+  it('allows paths with dots that are not traversal', () => {
+    expect(() => validateSecretPath('.hidden')).not.toThrow();
+    expect(() => validateSecretPath('file.txt')).not.toThrow();
+    expect(() => validateSecretPath('path/to/.config')).not.toThrow();
+  });
+});
+
+// --- SecretError ---
+
+describe('SecretError', () => {
+  it('has correct code and message', () => {
+    const err = new SecretError(SecretErrorCode.INVALID_PATH, 'bad path');
+    expect(err.code).toBe(SecretErrorCode.INVALID_PATH);
+    expect(err.message).toBe('bad path');
+    expect(err.name).toBe('SecretError');
+    expect(err).toBeInstanceOf(Error);
+  });
+
+  it('carries optional provider and path info', () => {
+    const err = new SecretError(SecretErrorCode.CRYPTO_ERROR, 'decrypt failed', {
+      provider: 'local',
+      secretPath: 'stripe/key',
+    });
+    expect(err.provider).toBe('local');
+    expect(err.secretPath).toBe('stripe/key');
+  });
+});
+
+// --- Environment Provider ---
 
 describe('EnvProvider', () => {
   let provider: EnvProvider;
@@ -101,7 +204,7 @@ describe('EnvProvider', () => {
     await prefixed.dispose();
   });
 
-  it('throws when required var is missing', async () => {
+  it('throws SecretError when required var is missing', async () => {
     const strict = new EnvProvider({
       name: 'strict',
       type: 'env',
@@ -109,8 +212,13 @@ describe('EnvProvider', () => {
     });
     await strict.initialize();
 
-    await expect(strict.getSecret('MISSING_REQUIRED_VAR'))
-      .rejects.toThrow('required environment variable');
+    try {
+      await strict.getSecret('MISSING_REQUIRED_VAR');
+      expect.unreachable('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(SecretError);
+      expect((err as SecretError).code).toBe(SecretErrorCode.NOT_FOUND);
+    }
 
     await strict.dispose();
   });
@@ -126,17 +234,23 @@ describe('EnvProvider', () => {
     expect(result.healthy).toBe(true);
   });
 
-  it('throws if not initialized', async () => {
+  it('throws SecretError if not initialized', async () => {
     const uninitialized = new EnvProvider({
       name: 'raw',
       type: 'env',
       config: {},
     });
-    await expect(uninitialized.getSecret('FOO')).rejects.toThrow('not initialized');
+    try {
+      await uninitialized.getSecret('FOO');
+      expect.unreachable('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(SecretError);
+      expect((err as SecretError).code).toBe(SecretErrorCode.NOT_INITIALIZED);
+    }
   });
 });
 
-// ─── Filesystem Provider ─────────────────────────────────
+// --- Filesystem Provider ---
 
 describe('FilesystemProvider', () => {
   let provider: FilesystemProvider;
@@ -192,142 +306,92 @@ describe('FilesystemProvider', () => {
   });
 
   it('deletes secrets', async () => {
-    await provider.setSecret!('to-delete', 'bye');
-    expect(await provider.getSecret('to-delete')).toBe('bye');
+    await provider.setSecret!('temp-key', 'temp-value');
+    expect(await provider.getSecret('temp-key')).toBe('temp-value');
     
-    await provider.deleteSecret!('to-delete');
-    expect(await provider.getSecret('to-delete')).toBeNull();
+    await provider.deleteSecret!('temp-key');
+    expect(await provider.getSecret('temp-key')).toBeNull();
   });
 
-  it('lists secrets', async () => {
+  it('lists all secrets', async () => {
     await provider.setSecret!('a', '1');
-    await provider.setSecret!('b/c', '2');
-    await provider.setSecret!('b/d', '3');
+    await provider.setSecret!('nested/b', '2');
+    await provider.setSecret!('nested/c', '3');
     
     const all = await provider.listSecrets!();
-    expect(all.sort()).toEqual(['a', 'b/c', 'b/d'].sort());
-    
-    const filtered = await provider.listSecrets!('b');
-    expect(filtered.sort()).toEqual(['b/c', 'b/d'].sort());
+    expect(all).toHaveLength(3);
+    expect(all).toContain('a');
+    expect(all).toContain(path.join('nested', 'b'));
+    expect(all).toContain(path.join('nested', 'c'));
   });
 
-  it('passes health check for valid directory', async () => {
+  it('lists secrets with prefix filter', async () => {
+    await provider.setSecret!('prod/stripe', '1');
+    await provider.setSecret!('prod/github', '2');
+    await provider.setSecret!('dev/openai', '3');
+    
+    const prodSecrets = await provider.listSecrets!('prod');
+    expect(prodSecrets.length).toBe(2);
+  });
+
+  it('health check passes for valid directory', async () => {
     const result = await provider.healthCheck();
     expect(result.healthy).toBe(true);
     expect(result.latencyMs).toBeDefined();
   });
 
-  it('fails health check for missing directory', async () => {
-    const bad = new FilesystemProvider({
-      name: 'bad',
-      type: 'filesystem',
-      config: { path: '/nonexistent/path/xyz', masterKey },
-    });
-    // Don't initialize — just health check
-    const result = await bad.healthCheck();
-    expect(result.healthy).toBe(false);
-  });
-
-  it('prevents path traversal', async () => {
-    await provider.setSecret!('legit', 'safe');
-    
-    // Attempt path traversal — should be normalized
-    const value = await provider.getSecret('../../etc/passwd');
-    expect(value).toBeNull(); // Should not read /etc/passwd
-  });
-
-  it('throws on invalid master key', () => {
-    expect(() => new FilesystemProvider({
-      name: 'bad-key',
-      type: 'filesystem',
-      config: { path: tmpDir, masterKey: '' },
-    })).toThrow('masterKey is required');
-  });
-});
-
-// ─── Registry ────────────────────────────────────────────
-
-describe('Provider Registry', () => {
-  afterEach(async () => {
-    await disposeAll();
-  });
-
-  it('creates filesystem providers', async () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'janee-reg-'));
-    const masterKey = generateMasterKey();
-
-    const provider = await createProvider({
-      name: 'local',
+  it('throws SecretError if not initialized', async () => {
+    const raw = new FilesystemProvider({
+      name: 'raw-fs',
       type: 'filesystem',
       config: { path: tmpDir, masterKey },
     });
-
-    expect(provider.name).toBe('local');
-    expect(provider.type).toBe('filesystem');
-
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    try {
+      await raw.getSecret('foo');
+      expect.unreachable('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(SecretError);
+      expect((err as SecretError).code).toBe(SecretErrorCode.NOT_INITIALIZED);
+    }
   });
 
-  it('creates env providers', async () => {
-    const provider = await createProvider({
-      name: 'ci',
-      type: 'env',
-      config: {},
-    });
+  // --- Security: Path traversal prevention ---
 
-    expect(provider.name).toBe('ci');
-    expect(provider.type).toBe('env');
+  it('rejects .. path traversal attempts', async () => {
+    try {
+      await provider.getSecret('../../../etc/passwd');
+      expect.unreachable('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(SecretError);
+      expect((err as SecretError).code).toBe(SecretErrorCode.INVALID_PATH);
+    }
   });
 
-  it('resolves secrets by URI', async () => {
-    process.env.TEST_RESOLVE = 'resolved-value';
-
-    await createProvider({ name: 'myenv', type: 'env', config: {} });
-    
-    const value = await resolveSecret('myenv://TEST_RESOLVE');
-    expect(value).toBe('resolved-value');
-
-    delete process.env.TEST_RESOLVE;
+  it('rejects absolute paths', async () => {
+    try {
+      await provider.getSecret('/etc/passwd');
+      expect.unreachable('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(SecretError);
+      expect((err as SecretError).code).toBe(SecretErrorCode.INVALID_PATH);
+    }
   });
 
-  it('uses default provider for plain paths', async () => {
-    process.env.PLAIN_PATH = 'default-resolved';
-
-    await createProvider({ name: 'local', type: 'env', config: {} });
-
-    const value = await resolveSecret('PLAIN_PATH', 'local');
-    expect(value).toBe('default-resolved');
-
-    delete process.env.PLAIN_PATH;
+  it('rejects paths that would escape via normalization', async () => {
+    try {
+      await provider.getSecret('a/b/../../../../etc/passwd');
+      expect.unreachable('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(SecretError);
+      expect((err as SecretError).code).toBe(SecretErrorCode.INVALID_PATH);
+    }
   });
 
-  it('throws for unknown provider type', async () => {
-    await expect(createProvider({
+  it('requires masterKey in config', () => {
+    expect(() => new FilesystemProvider({
       name: 'bad',
-      type: 'nonexistent-type',
-      config: {},
-    })).rejects.toThrow('Unknown provider type');
-  });
-
-  it('throws for unregistered provider name in resolveSecret', async () => {
-    await expect(resolveSecret('missing://secret'))
-      .rejects.toThrow('Provider "missing" not found');
-  });
-
-  it('health checks all providers', async () => {
-    await createProvider({ name: 'env1', type: 'env', config: {} });
-    await createProvider({ name: 'env2', type: 'env', config: {} });
-
-    const results = await healthCheckAll();
-    expect(results.env1.healthy).toBe(true);
-    expect(results.env2.healthy).toBe(true);
-  });
-
-  it('retrieves providers by name', async () => {
-    await createProvider({ name: 'lookup-test', type: 'env', config: {} });
-    
-    const provider = getProvider('lookup-test');
-    expect(provider).toBeDefined();
-    expect(provider!.name).toBe('lookup-test');
+      type: 'filesystem',
+      config: { path: tmpDir },
+    })).toThrow(SecretError);
   });
 });

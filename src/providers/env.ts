@@ -10,7 +10,7 @@
  * This reads from process.env.STRIPE_API_KEY at runtime.
  */
 
-import { SecretsProvider, HealthCheckResult, ProviderConfig } from './types';
+import { SecretsProvider, HealthCheckResult, ProviderConfig, SecretError, SecretErrorCode } from './types';
 
 interface EnvConfig {
   /** Optional prefix added to all lookups (e.g., "JANEE_" makes path "FOO" → "JANEE_FOO") */
@@ -46,8 +46,10 @@ export class EnvProvider implements SecretsProvider {
     
     if (value === undefined) {
       if (this.required) {
-        throw new Error(
-          `EnvProvider "${this.name}": required environment variable "${envVar}" is not set`
+        throw new SecretError(
+          SecretErrorCode.NOT_FOUND,
+          `EnvProvider "${this.name}": required environment variable "${envVar}" is not set`,
+          { provider: this.name, secretPath: varPath }
         );
       }
       return null;
@@ -77,7 +79,11 @@ export class EnvProvider implements SecretsProvider {
 
   private ensureInitialized(): void {
     if (!this.initialized) {
-      throw new Error(`EnvProvider "${this.name}": not initialized. Call initialize() first.`);
+      throw new SecretError(
+        SecretErrorCode.NOT_INITIALIZED,
+        `EnvProvider "${this.name}": not initialized. Call initialize() first.`,
+        { provider: this.name }
+      );
     }
   }
 }

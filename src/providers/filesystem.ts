@@ -7,7 +7,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { SecretsProvider, HealthCheckResult, ProviderConfig } from './types';
+import { SecretsProvider, HealthCheckResult, ProviderConfig, SecretError, SecretErrorCode, validateSecretPath } from './types';
 import { encryptSecret, decryptSecret } from '../core/crypto';
 
 interface FilesystemConfig {
@@ -30,15 +30,19 @@ export class FilesystemProvider implements SecretsProvider {
     const fsConfig = config.config as unknown as FilesystemConfig;
     
     if (!fsConfig.masterKey) {
-      throw new Error(`FilesystemProvider "${config.name}": masterKey is required`);
+      throw new SecretError(
+        SecretErrorCode.CONFIG_ERROR,
+        `FilesystemProvider "${config.name}": masterKey is required`,
+        { provider: config.name }
+      );
     }
     
     this.masterKey = fsConfig.masterKey;
-    this.secretsDir = fsConfig.path || path.join(
+    this.secretsDir = path.resolve(fsConfig.path || path.join(
       process.env.HOME || process.env.USERPROFILE || '/tmp',
       '.janee',
       'credentials'
-    );
+    ));
   }
 
   async initialize(): Promise<void> {
@@ -62,8 +66,10 @@ export class FilesystemProvider implements SecretsProvider {
       const encrypted = fs.readFileSync(filePath, 'utf8').trim();
       return decryptSecret(encrypted, this.masterKey);
     } catch (err) {
-      throw new Error(
-        `FilesystemProvider "${this.name}": failed to decrypt "${secretPath}": ${(err as Error).message}`
+      throw new SecretError(
+        SecretErrorCode.CRYPTO_ERROR,
+        `FilesystemProvider "${this.name}": failed to decrypt "${secretPath}": ${(err as Error).message}`,
+        { provider: this.name, secretPath, cause: err as Error }
       );
     }
   }
@@ -135,14 +141,43 @@ export class FilesystemProvider implements SecretsProvider {
 
   private ensureInitialized(): void {
     if (!this.initialized) {
-      throw new Error(`FilesystemProvider "${this.name}": not initialized. Call initialize() first.`);
+      throw new SecretError(
+        SecretErrorCode.NOT_INITIALIZED,
+        `FilesystemProvider "${this.name}": not initialized. Call initialize() first.`,
+        { provider: this.name }
+      );
     }
   }
 
+  /**
+   * Securely resolve a secret path to a filesystem path.
+   * 
+   * Security: Uses path.resolve + prefix check to guarantee the resolved
+   * path is contained within secretsDir. Rejects absolute paths and
+   * traversal attempts via validateSecretPath() and a post-resolution
+   * containment check.
+   */
   private resolvePath(secretPath: string): string {
-    // Prevent path traversal
-    const normalized = path.normalize(secretPath).replace(/^(\.\.[/\\])+/, '');
-    return path.join(this.secretsDir, normalized);
+    // Validate path structure (rejects .., absolute paths, etc.)
+    validateSecretPath(secretPath);
+
+    // Resolve to absolute path
+    const resolved = path.resolve(this.secretsDir, secretPath);
+
+    // Containment check: resolved path MUST be inside secretsDir
+    const secretsDirWithSep = this.secretsDir.endsWith(path.sep)
+      ? this.secretsDir
+      : this.secretsDir + path.sep;
+    
+    if (!resolved.startsWith(secretsDirWithSep) && resolved !== this.secretsDir) {
+      throw new SecretError(
+        SecretErrorCode.INVALID_PATH,
+        `Path "${secretPath}" resolves outside secrets directory`,
+        { provider: this.name, secretPath }
+      );
+    }
+
+    return resolved;
   }
 
   private walkDir(dir: string): string[] {
