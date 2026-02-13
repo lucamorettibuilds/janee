@@ -4,6 +4,16 @@ All notable changes to Janee will be documented in this file.
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-02-13
+
+### Added
+
+- **MCP Registry Support** — Add metadata for official MCP Registry listing (#60)
+  - Add `server.json` with MCP Registry schema compliance
+  - Add `mcpName` field to `package.json` (`io.github.rsdouglas/janee`)
+  - Enables publication to [official MCP Registry](https://registry.modelcontextprotocol.io)
+  - Will appear on PulseMCP, Glama.ai, and other MCP aggregators
+
 ## [0.8.0] - 2026-02-11
 
 ### Added
