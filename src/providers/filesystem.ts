@@ -2,7 +2,7 @@
  * Filesystem Secrets Provider
  * 
  * Wraps Janee's existing AES-256-GCM encrypted local storage.
- * This is the default provider — backward compatible with existing configs.
+ * This is the default provider -- backward compatible with existing configs.
  */
 
 import fs from 'fs';

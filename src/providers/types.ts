@@ -5,7 +5,7 @@
  * See RFC 0005 for full design: docs/rfcs/0005-plugin-architecture.md
  */
 
-// ─── Error Taxonomy ──────────────────────────────────────
+// --- Error Taxonomy --------------------------------------
 
 /**
  * Error codes for categorizing secrets operation failures.
@@ -14,7 +14,7 @@
 export enum SecretErrorCode {
   /** Provider is not initialized (call initialize() first) */
   NOT_INITIALIZED = 'NOT_INITIALIZED',
-  /** Secret was not found (normal — not an error for most callers) */
+  /** Secret was not found (normal -- not an error for most callers) */
   NOT_FOUND = 'NOT_FOUND',
   /** Authentication failure (bad credentials, expired token) */
   AUTH_FAILED = 'AUTH_FAILED',
@@ -56,7 +56,7 @@ export class SecretError extends Error {
   }
 }
 
-// ─── Core Interface ──────────────────────────────────────
+// --- Core Interface --------------------------------------
 
 /**
  * Core interface that all secrets providers must implement.
@@ -84,7 +84,7 @@ export interface SecretsProvider {
   getSecret(path: string): Promise<string | null>;
 
   /**
-   * Store a secret. Optional — not all providers support writes.
+   * Store a secret. Optional -- not all providers support writes.
    * @param path - Provider-specific path
    * @param value - Secret value to store
    */
@@ -96,7 +96,7 @@ export interface SecretsProvider {
   deleteSecret?(path: string): Promise<void>;
 
   /**
-   * List available secret paths. Optional — useful for CLI tooling.
+   * List available secret paths. Optional -- useful for CLI tooling.
    */
   listSecrets?(prefix?: string): Promise<string[]>;
 
@@ -106,7 +106,7 @@ export interface SecretsProvider {
   dispose(): Promise<void>;
 
   /**
-   * Health check — is the provider accessible and authenticated?
+   * Health check -- is the provider accessible and authenticated?
    */
   healthCheck(): Promise<HealthCheckResult>;
 }
@@ -136,7 +136,7 @@ export interface ProviderConfig {
  */
 export type ProviderFactory = (config: ProviderConfig) => SecretsProvider;
 
-// ─── URI Parsing ─────────────────────────────────────────
+// --- URI Parsing -----------------------------------------
 
 /** Maximum length of a provider name */
 const MAX_PROVIDER_NAME_LENGTH = 64;
@@ -163,9 +163,9 @@ export function parseProviderURI(uri: string): { provider: string | null; path: 
     throw new SecretError(SecretErrorCode.INVALID_URI, 'URI must be a non-empty string');
   }
 
-  const match = uri.match(/^([a-zA-Z][a-zA-Z0-9_-]*):\\/\\/(.+)$/);
+  const match = uri.match(/^([a-zA-Z][a-zA-Z0-9_-]*):\/\/(.+)$/);
   if (!match) {
-    // Plain path — validate and return
+    // Plain path -- validate and return
     validateSecretPath(uri);
     return { provider: null, path: uri };
   }

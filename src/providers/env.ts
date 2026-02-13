@@ -13,7 +13,7 @@
 import { SecretsProvider, HealthCheckResult, ProviderConfig, SecretError, SecretErrorCode } from './types';
 
 interface EnvConfig {
-  /** Optional prefix added to all lookups (e.g., "JANEE_" makes path "FOO" → "JANEE_FOO") */
+  /** Optional prefix added to all lookups (e.g., "JANEE_" makes path "FOO" -> "JANEE_FOO") */
   prefix?: string;
   /** If true, throw on missing vars instead of returning null (default: false) */
   required?: boolean;
