@@ -260,7 +260,7 @@ interface AwsSecretsManagerConfig {
   type: 'aws-secrets-manager';
   region: string;         // Required: us-east-1, etc.
   auth: AwsAuthConfig;    // Required
-  // No endpoint override in v1 (use standard AWS endpoints)
+  endpoint?: string;     // Optional: custom endpoint for testing/localstack
 }
 
 type AwsAuthConfig =
@@ -351,22 +351,13 @@ interface SecretsProvider {
   
   initialize(): Promise<void>;
   getSecret(path: string): Promise<string | null>;
+  setSecret(path: string, value: string): Promise<void>;
+  deleteSecret(path: string): Promise<void>;
+  listSecrets(prefix?: string): Promise<string[]>;
   dispose(): Promise<void>;
   healthCheck(): Promise<{ healthy: boolean; error?: string }>;
 }
 ```
-
-**Why read-only first:**
-- 99% of MCP server use cases are reading secrets
-- Write/delete operations can use provider-native CLIs (Vault CLI, AWS CLI, etc.)
-- Keeps initial implementation focused and testable
-
-**Future extensions** (when needed):
-- `setSecret(path, value)` - write operations
-- `deleteSecret(path)` - deletion
-- `listSecrets(prefix)` - discovery
-
-Build the core solid first, extend when users ask for it.
 
 ### Threats and Mitigations
 
@@ -425,7 +416,7 @@ key: vault://prod/../../sensitive
 *Mitigations:*
 - Environment variable substitution: `${VAULT_TOKEN}`
 - File references: `${file:~/.vault-token}`
-- System keychain integration (future: macOS Keychain, Windows Credential Manager)
+- System keychain integration (macOS Keychain, Windows Credential Manager)
 - File permissions: Warn if config file is world-readable
 - Kubernetes: Use secrets/configmaps for provider credentials
 
@@ -556,28 +547,26 @@ services:
 
 ## Implementation Approach
 
-### Build It Incrementally
+### Implementation Plan
 
-**Step 1: Core Abstraction**
-- Define `SecretsProvider` interface
+Build the plugin architecture complete in a feature branch, shipping all providers together:
+
+**Core:**
+- `SecretsProvider` interface (read + write operations)
+- Provider registry and `janee://` URI parsing
 - Extract current filesystem logic into `LocalProvider`
-- Implement provider registry and URI parsing
-- **Result:** Existing behavior preserved, new architecture in place
 
-**Step 2: Add Vault Provider**
-- Implement HashiCorp Vault provider with KV v2 support
-- Support token, AppRole, and Kubernetes auth
-- Token renewal and lease management
-- **Result:** Users can `janee://vault/path/to/secret`
-
-**Step 3: Add AWS Secrets Manager**
-- Implement AWS provider with IAM auth
-- Support cross-region secrets
-- **Result:** Users can `janee://aws/path/to/secret`
-
-**Step 4: Add More Providers** (as needed)
+**Providers:**
+- HashiCorp Vault (KV v2, token/AppRole/Kubernetes auth, lease management)
+- AWS Secrets Manager (IAM/access-key auth, cross-region)
 - Azure Key Vault
 - GCP Secret Manager
+
+**Testing:**
+- Integration tests per provider with containerized backends
+- Fallback/failover tests across provider combinations
+
+**Additional Providers:**
 - 1Password
 - Custom providers via plugin system
 
