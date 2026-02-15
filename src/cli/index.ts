@@ -9,6 +9,7 @@ import { Command } from 'commander';
 import { initCommand } from './commands/init';
 import { addCommand } from './commands/add';
 import { removeCommand } from './commands/remove';
+import { getCommand } from './commands/get';
 import { serveCommand } from './commands/serve';
 import { listCommand } from './commands/list';
 import { logsCommand } from './commands/logs';
@@ -64,6 +65,12 @@ program
   .option('-y, --yes', 'Skip confirmation prompt')
   .option('--json', 'Output as JSON')
   .action(removeCommand);
+
+program
+  .command('get <service> [field]')
+  .description('Get a secret value for a service (outputs raw value for scripting)')
+  .option('--json', 'Output as JSON')
+  .action(getCommand);
 
 program
   .command('serve')
