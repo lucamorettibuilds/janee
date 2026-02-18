@@ -18,6 +18,30 @@ function resolveEnvVar(varName: string, label: string): string {
   return value.trim();
 }
 
+/**
+ * Parse --env-map arguments like KEY=value or KEY={{credential}} into a Record.
+ * Example: ["TWITTER_API_KEY={{credential}}", "TWITTER_USER=myhandle"]
+ *   → { TWITTER_API_KEY: "{{credential}}", TWITTER_USER: "myhandle" }
+ */
+function parseEnvMap(mappings: string[]): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const mapping of mappings) {
+    const eqIdx = mapping.indexOf('=');
+    if (eqIdx === -1) {
+      console.error(`❌ Invalid --env-map format: "${mapping}" (expected KEY=value)`);
+      process.exit(1);
+    }
+    const key = mapping.slice(0, eqIdx).trim();
+    const value = mapping.slice(eqIdx + 1).trim();
+    if (!key) {
+      console.error(`❌ Invalid --env-map format: "${mapping}" (empty key)`);
+      process.exit(1);
+    }
+    result[key] = value;
+  }
+  return result;
+}
+
 export async function addCommand(
   serviceName?: string,
   options: {
@@ -32,6 +56,11 @@ export async function addCommand(
     passphraseFromEnv?: string;
     credentialsFile?: string;
     scope?: string | string[];
+    exec?: boolean;
+    allowCommands?: string[];
+    envMap?: string[];
+    workDir?: string;
+    timeout?: string;
     json?: boolean;
   } = {}
 ): Promise<void> {
@@ -68,6 +97,24 @@ export async function addCommand(
         process.exit(1);
       }
       options.passphrase = resolveEnvVar(options.passphraseFromEnv, 'passphrase');
+    }
+
+    // Exec mode validation (RFC 0001)
+    if (options.exec && !options.allowCommands?.length) {
+      if (options.json) {
+        console.log(JSON.stringify({ ok: false, error: '--exec requires --allow-commands (whitelist of allowed executables)' }));
+      } else {
+        console.error('❌ --exec requires --allow-commands (whitelist of allowed executables)');
+      }
+      process.exit(1);
+    }
+    if (!options.exec && (options.allowCommands || options.envMap || options.workDir || options.timeout)) {
+      if (options.json) {
+        console.log(JSON.stringify({ ok: false, error: '--allow-commands, --env-map, --work-dir, and --timeout require --exec' }));
+      } else {
+        console.error('❌ --allow-commands, --env-map, --work-dir, and --timeout require --exec');
+      }
+      process.exit(1);
     }
 
     // Lazy readline — only created when a prompt is actually needed.
@@ -438,14 +485,24 @@ export async function addCommand(
       // If readline was never opened, we're fully non-interactive.
       // Auto-create a capability with sensible defaults.
       if (!prompted && !config.capabilities[serviceName]) {
-        config.capabilities[serviceName] = {
+        const capConfig: CapabilityConfig = {
           service: serviceName,
           ttl: '1h',
           autoApprove: true,
         };
+        if (options.exec) {
+          capConfig.mode = 'exec';
+          if (options.allowCommands) capConfig.allowCommands = options.allowCommands;
+          if (options.envMap) capConfig.env = parseEnvMap(options.envMap);
+          if (options.workDir) capConfig.workDir = options.workDir;
+          if (options.timeout) capConfig.timeout = parseInt(options.timeout, 10);
+        }
+        config.capabilities[serviceName] = capConfig;
         saveYAMLConfig(config);
         result.capability = serviceName;
-        result.capabilityMessage = `Added capability "${serviceName}" (1h TTL, auto-approve)`;
+        result.capabilityMessage = options.exec
+          ? `Added exec-mode capability "${serviceName}" (1h TTL, auto-approve, commands: ${(options.allowCommands || []).join(', ')})`
+          : `Added capability "${serviceName}" (1h TTL, auto-approve)`;
       }
       
       console.log(JSON.stringify(result));
@@ -459,13 +516,26 @@ export async function addCommand(
     // Auto-create a capability with sensible defaults instead of prompting.
     if (!prompted) {
       if (!config.capabilities[serviceName]) {
-        config.capabilities[serviceName] = {
+        const capConfig: CapabilityConfig = {
           service: serviceName,
           ttl: '1h',
           autoApprove: true,
         };
+        if (options.exec) {
+          capConfig.mode = 'exec';
+          if (options.allowCommands) capConfig.allowCommands = options.allowCommands;
+          if (options.envMap) capConfig.env = parseEnvMap(options.envMap);
+          if (options.workDir) capConfig.workDir = options.workDir;
+          if (options.timeout) capConfig.timeout = parseInt(options.timeout, 10);
+        }
+        config.capabilities[serviceName] = capConfig;
         saveYAMLConfig(config);
-        console.log(`✅ Added capability "${serviceName}" (1h TTL, auto-approve)`);
+        if (options.exec) {
+          console.log(`✅ Added exec-mode capability "${serviceName}" (1h TTL, auto-approve)`);
+          console.log(`   Allowed commands: ${(options.allowCommands || []).join(', ')}`);
+        } else {
+          console.log(`✅ Added capability "${serviceName}" (1h TTL, auto-approve)`);
+        }
         console.log();
       }
       console.log("Done! Run 'janee serve' to start.");
@@ -497,12 +567,20 @@ export async function addCommand(
       const requiresReason = requiresReasonInput.toLowerCase() === 'y' || requiresReasonInput.toLowerCase() === 'yes';
 
       // Add capability
-      config.capabilities[capName] = {
+      const capConfig: CapabilityConfig = {
         service: serviceName,
         ttl,
         autoApprove,
         requiresReason
       };
+      if (options.exec) {
+        capConfig.mode = 'exec';
+        if (options.allowCommands) capConfig.allowCommands = options.allowCommands;
+        if (options.envMap) capConfig.env = parseEnvMap(options.envMap);
+        if (options.workDir) capConfig.workDir = options.workDir;
+        if (options.timeout) capConfig.timeout = parseInt(options.timeout, 10);
+      }
+      config.capabilities[capName] = capConfig;
 
       saveYAMLConfig(config);
 
