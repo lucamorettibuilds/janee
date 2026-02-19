@@ -2,7 +2,7 @@
   "id": "janee-openclaw",
   "name": "Janee",
   "description": "Secrets management for AI agents - secure API access with audit logging",
-  "version": "0.1.5",
+  "version": "0.3.1",
   "skills": ["skills"],
   "configSchema": {
     "type": "object",

@@ -4,10 +4,19 @@ All notable changes to Janee will be documented in this file.
 
 ## [Unreleased]
 
+_(empty)_
+
+## [0.8.5] - 2026-02-19
+
 ### Added
 - Docker support: Dockerfile, docker-compose.yml, and .dockerignore for containerized deployment
 - Docker documentation (docs/docker.md) with stdio/HTTP modes, Claude Desktop config, and security guidance
 - README Docker section with quick start examples
+
+### Fixed (janee-openclaw v0.3.1)
+- **Version Sync** — Align plugin manifest and MCP client version with package.json (was 0.1.5 / 0.1.0, now 0.3.1)
+- **MCP SDK Version** — Bump `@modelcontextprotocol/sdk` dependency from ^1.0.0 to ^1.25.3
+- **README Fixes** — Correct install command to scoped package name, fix config.json → config.yaml references, document `janee_reload_config` tool (3 tools, not 2), remove stale `--mcp` flag
 
 ## [0.8.4] - 2026-02-14
 

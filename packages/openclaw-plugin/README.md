@@ -14,7 +14,7 @@ This plugin gives your OpenClaw agent secure access to API credentials through J
 
 ```bash
 # Install Janee CLI globally
-npm install -g janee
+npm install -g @true-and-useful/janee
 
 # Initialize Janee
 janee init
@@ -77,7 +77,7 @@ See [docs/container-openclaw.md](../../docs/container-openclaw.md) for full setu
 
 ## Usage
 
-The plugin exposes two tools to your agent:
+The plugin exposes three tools to your agent:
 
 ### `janee_list_services`
 
@@ -107,6 +107,14 @@ await janee_execute({
   body: JSON.stringify({ title: "Bug report", body: "..." }),
   reason: "Creating issue per user request"
 })
+```
+
+### `janee_reload_config`
+
+Reloads Janee config from disk without restarting:
+
+```typescript
+await janee_reload_config()
 ```
 
 ## How It Works
@@ -142,27 +150,26 @@ janee logs --date 2026-02-03
 - Keys encrypted at rest with AES-256-GCM
 - Config files locked to user-only (chmod 0600)
 - All API calls audited with timestamps and reasons
-- Kill switch: `rm ~/.janee/config.json` disables all access
+- Kill switch: `rm ~/.janee/config.yaml` disables all access
 
-## Future Features (Phase 2)
+## Future Features
 
 - **LLM adjudication**: Janee can call an LLM to approve/deny sensitive operations
 - **Rate limiting**: Prevent runaway API usage
-- **Allowlists/blocklists**: Restrict which endpoints agents can access
 - **Multi-user**: Support team deployments with shared policies
 
 ## Troubleshooting
 
 **Plugin can't find janee:**
-- Make sure `janee` is installed globally: `npm install -g janee`
+- Make sure `janee` is installed globally: `npm install -g @true-and-useful/janee`
 - Check `which janee` returns a path
 
 **Connection errors:**
-- Try running `janee serve --mcp` manually to test
-- Check `~/.janee/config.json` exists and has services configured
+- Try running `janee serve` manually to test
+- Check `~/.janee/config.yaml` exists and has services configured
 
 **Permission errors:**
-- Config should be readable only by you: `ls -l ~/.janee/config.json`
+- Config should be readable only by you: `ls -l ~/.janee/config.yaml`
 - Should show `-rw-------` (0600 permissions)
 
 ## License

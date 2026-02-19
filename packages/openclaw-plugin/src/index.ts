@@ -39,7 +39,7 @@ async function connect(api: any): Promise<Client> {
   }
 
   const client = new Client(
-    { name: "openclaw-janee", version: "0.1.0" },
+    { name: "openclaw-janee", version: "0.3.1" },
     { capabilities: {} }
   );
 
