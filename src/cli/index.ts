@@ -56,6 +56,11 @@ program
   .option('--passphrase-from-env <var>', 'Read passphrase from environment variable')
   .option('--credentials-file <path>', 'Path to service account JSON file (for service-account auth type)')
   .option('--scope <scope...>', 'OAuth scope(s) for service-account auth type')
+  .option('--exec', 'Add as exec-mode service (CLI tool wrapper, RFC 0001)')
+  .option('--allow-commands <cmds...>', 'Allowed executables for exec mode (e.g., bird gh)')
+  .option('--env-map <mappings...>', 'Env var mappings (KEY=value or KEY={{credential}})')
+  .option('--work-dir <dir>', 'Working directory for exec-mode commands')
+  .option('--timeout <ms>', 'Max execution time in ms for exec mode (default: 30000)')
   .option('--json', 'Output as JSON')
   .action(addCommand);
 
