@@ -1,12 +1,13 @@
 {
   "name": "@true-and-useful/create-gh-app",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Create GitHub Apps for autonomous agents via the manifest flow. Lists installations and mints short-lived tokens.",
   "type": "module",
   "bin": {
-    "create-gh-app": "./create-gh-app.mjs"
+    "create-gh-app": "./cli.js"
   },
   "files": [
+    "cli.js",
     "create-gh-app.mjs",
     "README.md"
   ],
