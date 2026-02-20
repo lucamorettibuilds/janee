@@ -88,6 +88,8 @@ export async function serveMCPCommand(options: ServeMCPOptions = {}): Promise<vo
       sessionManager,
       auditLogger,
       defaultAccess: config.server?.defaultAccess,
+      agents: config.agents,
+      requireVerifiedIdentity: config.server?.requireVerifiedIdentity,
 
       // RFC 0001: Secure CLI execution handler
       onExecCommand: async (session, capability, command, stdin) => {

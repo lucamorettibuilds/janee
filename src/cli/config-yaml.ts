@@ -63,6 +63,8 @@ export interface ServerConfig {
   strictDecryption?: boolean;  // Fail hard on decryption errors (default: true)
   /** Default access policy for capabilities without allowedAgents: "open" (any agent) or "restricted" (admin-only) */
   defaultAccess?: 'open' | 'restricted';
+  /** Require verified agent identity for certain transports: "http" | "all" | false (default: false) */
+  requireVerifiedIdentity?: 'http' | 'all' | false;
 }
 
 export interface JaneeYAMLConfig {
@@ -72,6 +74,8 @@ export interface JaneeYAMLConfig {
   llm?: LLMConfig;
   services: Record<string, ServiceConfig>;
   capabilities: Record<string, CapabilityConfig>;
+  /** Agent registry — maps agent IDs to encrypted secrets for authenticated identity */
+  agents?: Record<string, { secret: string }>;
 }
 
 /**

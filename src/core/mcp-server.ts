@@ -22,6 +22,7 @@ import express from 'express';
 import { validateCommand, buildExecEnv, executeCommand, scrubCredentials, ExecResult } from './exec.js';
 import { readFileSync } from 'fs';
 import { canAgentAccess, resolveAgentIdentity, CredentialOwnership } from './agent-scope.js';
+import { authenticateAgent, requiresVerification } from './agent-registry.js';
 import { join } from 'path';
 
 
@@ -117,6 +118,10 @@ export interface MCPServerOptions {
   auditLogger: AuditLogger;
   /** Default access policy for capabilities without allowedAgents: "open" (any agent) or "restricted" (no agent unless listed) */
   defaultAccess?: 'open' | 'restricted';
+  /** Agent registry for verified identity (from config.yaml agents section) */
+  agents?: Record<string, { secret: string }>;
+  /** Require verified identity for certain transports */
+  requireVerifiedIdentity?: 'http' | 'all' | false;
   onExecute: (session: any, request: APIRequest) => Promise<APIResponse>;
   onExecCommand?: (session: any, capability: Capability, command: string[], stdin?: string) => Promise<ExecResult>;
   onReloadConfig?: () => ReloadResult;
@@ -806,6 +811,20 @@ export async function startMCPServerHTTP(
         await session.transport.handleRequest(req, res, req.body);
 
       } else if (!sessionId && isInitializeRequest(req.body)) {
+        // --- Agent identity verification ---
+        if (requiresVerification(serverOptions.requireVerifiedIdentity, 'http')) {
+          const agentId = req.body?.params?.clientInfo?.name;
+          const authPayload = (req.body as any)?.params?._auth;
+          const result = authenticateAgent(agentId, authPayload, serverOptions.agents);
+          if (!result.verified) {
+            res.status(403).json({
+              jsonrpc: '2.0',
+              error: { code: -32001, message: `Agent verification failed: ${result.reason}` },
+              id: (req.body as any)?.id ?? null,
+            });
+            return;
+          }
+        }
         const clientName: string | undefined = req.body?.params?.clientInfo?.name;
         const { server, clientSessions } = createMCPServer(serverOptions);
 
