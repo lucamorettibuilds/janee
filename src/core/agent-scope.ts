@@ -171,3 +171,119 @@ export function revokeAccess(
 
   return updated;
 }
+
+
+// ─── Hardened Agent Identity (issue #96) ───────────────────────────────
+
+/**
+ * Agent registry entry — maps an agent ID to its encrypted secret
+ */
+export interface AgentRegistryEntry {
+  /** Encrypted secret for agent authentication */
+  secret: string;
+}
+
+/**
+ * Verification enforcement policy
+ * - 'http': Only HTTP transport clients must verify identity
+ * - 'all': All clients (including stdio) must verify identity
+ * - false: No enforcement — current behavior (clientInfo.name trusted)
+ */
+export type RequireVerifiedIdentity = 'http' | 'all' | false;
+
+/**
+ * Result of agent secret verification
+ */
+export interface AgentVerificationResult {
+  verified: boolean;
+  agentId?: string;
+  error?: string;
+}
+
+/**
+ * Verify an agent's secret against the agent registry.
+ * 
+ * @param agentId - The claimed agent ID
+ * @param secret - The secret provided by the agent during _auth
+ * @param registry - Map of agent ID → decrypted secret
+ * @returns Verification result
+ */
+export function verifyAgentSecret(
+  agentId: string,
+  secret: string,
+  registry: Map<string, string>
+): AgentVerificationResult {
+  const registeredSecret = registry.get(agentId);
+  
+  if (!registeredSecret) {
+    return {
+      verified: false,
+      error: `Agent "${agentId}" not found in registry`
+    };
+  }
+  
+  // Constant-time comparison to prevent timing attacks
+  if (!timingSafeEqual(secret, registeredSecret)) {
+    return {
+      verified: false,
+      error: `Invalid secret for agent "${agentId}"`
+    };
+  }
+  
+  return {
+    verified: true,
+    agentId
+  };
+}
+
+/**
+ * Constant-time string comparison to prevent timing attacks.
+ * Falls back to crypto.timingSafeEqual when available.
+ */
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    // Still do work proportional to max length to avoid length-leak
+    let result = a.length ^ b.length;
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+      result |= (a.charCodeAt(i % a.length) ?? 0) ^ (b.charCodeAt(i % b.length) ?? 0);
+    }
+    return false;
+  }
+  
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+}
+
+/**
+ * Check if a request should be rejected due to missing verification.
+ * 
+ * @param policy - The requireVerifiedIdentity setting
+ * @param transportType - 'stdio' | 'http'
+ * @param isVerified - Whether the agent has been verified via _auth
+ * @param capabilityHasAllowedAgents - Whether the capability has allowedAgents restrictions
+ * @returns true if the request should be blocked
+ */
+export function shouldRequireVerification(
+  policy: RequireVerifiedIdentity,
+  transportType: 'stdio' | 'http',
+  isVerified: boolean,
+  capabilityHasAllowedAgents: boolean
+): boolean {
+  // No enforcement
+  if (policy === false) return false;
+  
+  // Only enforce for capabilities with allowedAgents
+  if (!capabilityHasAllowedAgents) return false;
+  
+  // Already verified — allow
+  if (isVerified) return false;
+  
+  // Check transport-level policy
+  if (policy === 'http' && transportType === 'http') return true;
+  if (policy === 'all') return true;
+  
+  return false;
+}

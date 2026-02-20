@@ -9,6 +9,7 @@ import os from 'os';
 import yaml from 'js-yaml';
 import { encryptSecret, decryptSecret, generateMasterKey } from '../core/crypto';
 import { CredentialOwnership, agentCreatedOwnership, cliCreatedOwnership } from '../core/agent-scope';
+import type { RequireVerifiedIdentity } from '../core/agent-scope';
 
 export interface AuthConfig {
   type: 'bearer' | 'hmac-mexc' | 'hmac-bybit' | 'hmac-okx' | 'headers' | 'service-account' | 'github-app';
@@ -54,11 +55,19 @@ export interface LLMConfig {
   model?: string;
 }
 
+
+export interface AgentConfig {
+  /** Encrypted secret for agent authentication during MCP initialize */
+  secret: string;
+}
+
 export interface ServerConfig {
   port: number;
   host: string;
   logBodies?: boolean;  // Log request bodies in audit trail (default: true)
   strictDecryption?: boolean;  // Fail hard on decryption errors (default: true)
+  /** Require verified identity for agent access control */
+  requireVerifiedIdentity?: 'http' | 'all' | false;
 }
 
 export interface JaneeYAMLConfig {
@@ -68,6 +77,8 @@ export interface JaneeYAMLConfig {
   llm?: LLMConfig;
   services: Record<string, ServiceConfig>;
   capabilities: Record<string, CapabilityConfig>;
+  /** Registered agents with encrypted secrets for identity verification */
+  agents?: Record<string, AgentConfig>;
 }
 
 /**
@@ -207,6 +218,21 @@ export function loadYAMLConfig(): JaneeYAMLConfig {
         strictDecryption,
         `GitHub App private key for service "${name}"`
       );
+    }
+  }
+
+
+  // Decrypt agent secrets
+  if (config.agents) {
+    for (const [agentId, agent] of Object.entries(config.agents)) {
+      if (agent.secret) {
+        agent.secret = tryDecrypt(
+          agent.secret,
+          config.masterKey,
+          strictDecryption,
+          `secret for agent "${agentId}"`
+        );
+      }
     }
   }
 
