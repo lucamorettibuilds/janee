@@ -21,7 +21,7 @@ Copy this into your PR description:
 
 - [ ] **Tests** — New features need tests. Bug fixes need regression tests.
 - [ ] **CHANGELOG.md** — Update `docs/CHANGELOG.md` for user-facing changes.
-- [ ] **Version bump** — Bump version in `package.json` if this PR should trigger a release.
+- [ ] **Version bump** — Bump version in each changed package's `package.json` (see [Version Bumping](#version-bumping) for all three packages).
 
 ### When Applicable
 
@@ -42,14 +42,25 @@ Copy this into your PR description:
 
 ### Version Bumping
 
-When your PR includes user-facing changes that should be published to npm:
+This repo contains **three publishable packages**. Bump the version in every package that changed:
 
-1. Bump the version in `package.json` following [semver](https://semver.org/):
-   - **patch** (0.8.x → 0.8.y) for bug fixes
-   - **minor** (0.x.0 → 0.y.0) for new features
-   - **major** (x.0.0 → y.0.0) for breaking changes
-2. Add a corresponding entry in `docs/CHANGELOG.md` under the new version heading
+| Package | File | npm name |
+|---------|------|----------|
+| Janee (main) | `package.json` | `@true-and-useful/janee` |
+| create-gh-app | `packages/create-gh-app/package.json` | `@true-and-useful/create-gh-app` |
+| OpenClaw plugin | `packages/openclaw-plugin/package.json` | `@true-and-useful/janee-openclaw` |
+
+Follow [semver](https://semver.org/):
+- **patch** (0.8.x → 0.8.y) for bug fixes
+- **minor** (0.x.0 → 0.y.0) for new features
+- **major** (x.0.0 → y.0.0) for breaking changes
+
+For each bumped package:
+1. Update the version in its `package.json`
+2. Add an entry in `docs/CHANGELOG.md` under the new version heading
 3. If unsure whether to bump, ask in the PR — the maintainer will advise
+
+Publishing is done after merge with `npm publish` from each package directory. Duplicate-version publishes will fail, so always check `npm view <pkg> versions` before publishing.
 
 ## Commit Messages
 
