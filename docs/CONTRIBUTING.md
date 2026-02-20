@@ -28,7 +28,6 @@ Copy this into your PR description:
 - [ ] **README.md** — Update if adding new features, CLI commands, or config options.
 - [ ] **SKILL.md** — Update if agents need to know about the change (new tools, new auth types, new capabilities).
 - [ ] **docs/** — Add or update documentation for significant features.
-- [ ] **RFC status** — If implementing an RFC, update its status from Draft → Implemented.
 - [ ] **Types** — Ensure TypeScript types are updated and exported if needed.
 - [ ] **Security review** — For auth/crypto changes, note any security considerations in the PR description.
 
@@ -69,15 +68,6 @@ Keep them short and descriptive:
 - `fix: Handle 401 retry in token refresh`
 - `docs: Update changelog for v0.2.0`
 - `test: Add caching tests for service accounts`
-
-## RFC Process
-
-For significant features:
-
-1. Create RFC in `docs/rfcs/NNNN-feature-name.md`
-2. Get feedback before implementing
-3. Reference RFC in PR
-4. Update RFC status when merged
 
 ## Security
 
