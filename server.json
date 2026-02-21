@@ -6,12 +6,12 @@
     "url": "https://github.com/rsdouglas/janee",
     "source": "github"
   },
-  "version": "0.8.5",
+  "version": "0.10.1",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@true-and-useful/janee",
-      "version": "0.8.5",
+      "version": "0.10.1",
       "transport": {
         "type": "stdio"
       },
