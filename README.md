@@ -424,6 +424,8 @@ You can also run the Authority as a standalone process:
 janee authority --runner-key "$JANEE_RUNNER_KEY" --host 127.0.0.1 --port 9120
 ```
 
+See the [Runner/Authority guide](docs/runner-authority.md) for the full architecture, exec authorization flow, Docker Compose example, and troubleshooting.
+
 
 ---
 
