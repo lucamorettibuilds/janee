@@ -279,6 +279,10 @@ export function createMCPServer(options: MCPServerOptions): MCPServerResult {
           items: { type: 'string' },
           description: 'Command and arguments as array, e.g. ["gh", "issue", "list"]'
         },
+        cwd: {
+          type: 'string',
+          description: 'Working directory for the command (defaults to process cwd)'
+        },
         stdin: {
           type: 'string',
           description: 'Optional stdin input to pipe to the command'
@@ -503,7 +507,7 @@ export function createMCPServer(options: MCPServerOptions): MCPServerResult {
             throw new Error('CLI execution not supported in this configuration');
           }
 
-          const { capability: execCapName, command: rawExecCommand, stdin: execStdin, reason: execReason } = args as any;
+          const { capability: execCapName, command: rawExecCommand, cwd: execCwd, stdin: execStdin, reason: execReason } = args as any;
 
           if (!execCapName) {
             throw new Error('Missing required argument: capability');
@@ -524,7 +528,7 @@ export function createMCPServer(options: MCPServerOptions): MCPServerResult {
           if (onForwardToolCall) {
             // Runner mode: Authority handles validation and credential injection.
             // Build a minimal capability stub so onExecCommand has the name.
-            execCap = { name: execCapName, service: '', ttl: '1h', mode: 'exec' } as Capability;
+            execCap = { name: execCapName, service: '', ttl: '1h', mode: 'exec', workDir: execCwd } as Capability;
             execSession = { agentId: resolveAgentFromRequest(extra, args) };
           } else {
             // Standalone mode: validate locally
@@ -532,7 +536,7 @@ export function createMCPServer(options: MCPServerOptions): MCPServerResult {
             if (!foundCap) {
               throw new Error(`Unknown capability: ${execCapName}`);
             }
-            execCap = foundCap;
+            execCap = execCwd ? { ...foundCap, workDir: execCwd } : foundCap;
 
             if (execCap.mode !== 'exec') {
               throw new Error(`Capability "${execCapName}" is not an exec-mode capability. Use the 'execute' tool for API proxy capabilities.`);
