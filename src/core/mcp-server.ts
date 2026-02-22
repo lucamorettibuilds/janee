@@ -127,7 +127,7 @@ export interface MCPServerOptions {
    * to the Authority via this callback instead of handled locally.
    * janee_exec is always handled locally by onExecCommand.
    */
-  onForwardToolCall?: (toolName: string, args: Record<string, unknown>) => Promise<unknown>;
+  onForwardToolCall?: (toolName: string, args: Record<string, unknown>, agentId?: string) => Promise<unknown>;
   /** When true, janee_exec is hidden from the tool list. Used in authority/HTTP mode
    * where exec would run in the wrong context. */
   hideExecTool?: boolean;
@@ -337,8 +337,8 @@ export function createMCPServer(options: MCPServerOptions): MCPServerResult {
     try {
       // Runner proxy: forward non-exec tools to the Authority
       if (onForwardToolCall && name !== 'janee_exec') {
-        const result = await onForwardToolCall(name, (args || {}) as Record<string, unknown>);
-        // Authority returns MCP result format -- pass through
+        const forwardAgentId = resolveAgentFromRequest(extra, args);
+        const result = await onForwardToolCall(name, (args || {}) as Record<string, unknown>, forwardAgentId);
         return result as any;
       }
 
@@ -525,7 +525,7 @@ export function createMCPServer(options: MCPServerOptions): MCPServerResult {
             // Runner mode: Authority handles validation and credential injection.
             // Build a minimal capability stub so onExecCommand has the name.
             execCap = { name: execCapName, service: '', ttl: '1h', mode: 'exec' } as Capability;
-            execSession = null;
+            execSession = { agentId: resolveAgentFromRequest(extra, args) };
           } else {
             // Standalone mode: validate locally
             const foundCap = capabilities.find(c => c.name === execCapName);

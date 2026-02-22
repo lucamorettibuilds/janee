@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.11.1] - 2026-02-22
+
+### Fixed
+
+- **Runner proxy now forwards agent identity** to Authority — per-agent MCP sessions ensure `allowedAgents` access control works correctly through the Runner.
+- **GitHub App token minting in Authority exec grants** — `buildAuthorityHooks` now handles `github-app` auth type, minting installation tokens for exec commands.
+
 ## [0.11.0] - 2026-02-18
 
 ### Added

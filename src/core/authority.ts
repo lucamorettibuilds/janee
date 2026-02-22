@@ -1,6 +1,7 @@
 import express from 'express';
 import { randomUUID, timingSafeEqual } from 'crypto';
 import { validateCommand, buildExecEnv, hashPolicyFingerprint } from './exec.js';
+import { getInstallationToken, GitHubAppCredentials } from './github-app.js';
 
 export interface RunnerIdentity {
   runnerId: string;
@@ -135,6 +136,13 @@ export function buildAuthorityHooks(
       let extraCredentials: { apiKey?: string; apiSecret?: string; passphrase?: string } | undefined;
       if (service.auth.type === 'bearer') {
         credential = service.auth.key || '';
+      } else if (service.auth.type === 'github-app' && service.auth.appId && service.auth.privateKey && service.auth.installationId) {
+        const ghCreds: GitHubAppCredentials = {
+          appId: service.auth.appId,
+          privateKey: service.auth.privateKey,
+          installationId: service.auth.installationId,
+        };
+        credential = await getInstallationToken(cap.service, ghCreds);
       } else if (service.auth.type === 'hmac-mexc' || service.auth.type === 'hmac-bybit' || service.auth.type === 'hmac-okx') {
         extraCredentials = {
           apiKey: service.auth.apiKey,

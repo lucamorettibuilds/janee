@@ -108,8 +108,8 @@ export async function serveMCPCommand(options: ServeMCPOptions = {}): Promise<vo
 
       // Runner proxy: forward non-exec tools to the Authority
       ...(isRunnerMode ? {
-        onForwardToolCall: async (toolName: string, args: Record<string, unknown>) => {
-          return forwardToolCall(options.authority!, runnerName, toolName, args);
+        onForwardToolCall: async (toolName: string, args: Record<string, unknown>, agentId?: string) => {
+          return forwardToolCall(options.authority!, agentId || runnerName, toolName, args);
         },
       } : {}),
 
