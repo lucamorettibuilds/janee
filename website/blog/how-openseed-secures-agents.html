@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-426R0H9KND"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-426R0H9KND');
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How OpenSeed Secures Its Agents with Janee — Janee Blog</title>
+  <meta name="description" content="OpenSeed runs autonomous AI agents that need GitHub, Stripe, and other API access. Here's how they use Janee to give each agent exactly the permissions it needs — and nothing more.">
+  <link rel="canonical" href="https://janee.io/blog/how-openseed-secures-agents">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://janee.io/blog/how-openseed-secures-agents">
+  <meta property="og:title" content="How OpenSeed Secures Its Agents with Janee">
+  <meta property="og:description" content="OpenSeed runs autonomous AI agents that need GitHub, Stripe, and other API access. Here's how they use Janee to give each agent exactly the permissions it needs — and nothing more.">
+  <meta property="og:image" content="https://janee.io/og-image.png">
+
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#x1f510;</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+
+    :root {
+      --bg: #ffffff;
+      --bg-subtle: #f8f9fa;
+      --bg-card: #ffffff;
+      --fg: #1a1a2e;
+      --fg-muted: #6b7280;
+      --fg-dim: #9ca3af;
+      --accent: #10b981;
+      --accent-hover: #059669;
+      --accent-subtle: rgba(16, 185, 129, 0.08);
+      --accent-glow: rgba(16, 185, 129, 0.12);
+      --border: #e5e7eb;
+      --border-subtle: #f3f4f6;
+      --code-bg: #f4f5f7;
+      --code-fg: #1a1a2e;
+    }
+
+    html { scroll-behavior: smooth; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', -apple-system, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    .container {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    /* ── Nav ── */
+    nav {
+      padding: 1.25rem 0;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    nav .container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--fg);
+      text-decoration: none;
+      letter-spacing: -0.02em;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 2rem;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--fg-muted);
+      text-decoration: none;
+      font-size: 0.875rem;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover { color: var(--fg); }
+
+    @media (max-width: 768px) {
+      .nav-links { gap: 1.25rem; }
+    }
+
+    @media (max-width: 480px) {
+      .nav-links { gap: 0.75rem; }
+      .nav-links a { font-size: 0.8rem; }
+    }
+
+    /* Blog-specific styles */
+    .blog-header {
+      padding: 4rem 0 2rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .blog-header h1 {
+      font-size: 2.2rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.2;
+      margin-bottom: 1rem;
+    }
+    .blog-meta {
+      color: var(--fg-muted);
+      font-size: 0.9rem;
+    }
+    .blog-content {
+      padding: 3rem 0;
+      max-width: 680px;
+    }
+    .blog-content h2 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin: 2.5rem 0 1rem;
+      letter-spacing: -0.02em;
+    }
+    .blog-content h3 {
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin: 2rem 0 0.75rem;
+    }
+    .blog-content p {
+      margin-bottom: 1.25rem;
+      color: var(--fg);
+      line-height: 1.75;
+    }
+    .blog-content code {
+      background: var(--code-bg);
+      color: var(--code-fg);
+      padding: 0.15em 0.4em;
+      border-radius: 4px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.875em;
+    }
+    .blog-content pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem;
+      overflow-x: auto;
+      margin: 1.5rem 0;
+    }
+    .blog-content pre code {
+      background: none;
+      padding: 0;
+      font-size: 0.85rem;
+      line-height: 1.6;
+    }
+    .blog-content ul, .blog-content ol {
+      margin: 1rem 0 1.5rem 1.5rem;
+      line-height: 1.75;
+    }
+    .blog-content li {
+      margin-bottom: 0.5rem;
+    }
+    .blog-content blockquote {
+      border-left: 3px solid var(--accent);
+      padding: 0.75rem 1.25rem;
+      margin: 1.5rem 0;
+      background: var(--accent-subtle);
+      border-radius: 0 8px 8px 0;
+    }
+    .blog-content blockquote p {
+      margin-bottom: 0;
+      color: var(--fg-muted);
+    }
+    .blog-content hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 2.5rem 0;
+    }
+    .blog-cta {
+      background: var(--bg-subtle);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      margin: 3rem 0;
+      text-align: center;
+    }
+    .blog-cta h3 {
+      margin-top: 0;
+    }
+    .blog-cta .btn {
+      display: inline-block;
+      padding: 0.75rem 1.5rem;
+      background: var(--accent);
+      color: white;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+      margin-top: 1rem;
+    }
+    .blog-cta .btn:hover {
+      background: var(--accent-hover);
+    }
+
+    footer {
+      padding: 2rem 0;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--fg-dim);
+    }
+
+    footer a {
+      color: var(--fg-muted);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    footer a:hover { color: var(--fg); }
+  </style>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <a href="/" class="logo">Janee</a>
+      <ul class="nav-links">
+        <li><a href="https://github.com/rsdouglas/janee">GitHub</a></li>
+        <li><a href="https://www.npmjs.com/package/@true-and-useful/janee">npm</a></li>
+        <li><a href="/blog/">Blog</a></li>
+        <li><a href="/docs/">Docs</a></li>
+        <li><a href="https://x.com/rsdgls">Twitter</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <div class="container">
+    <header class="blog-header">
+      <h1>How OpenSeed Secures Its Agents with Janee</h1>
+      <div class="blog-meta">February 2026 &middot; 7 min read</div>
+    </header>
+
+    <article class="blog-content">
+      <p><a href="https://github.com/openseed-dev/openseed">OpenSeed</a> is an autonomous agent platform where AI "creatures" run independently &mdash; auditing code for security issues, committing patches, and interacting with external services. Each creature needs API access to do real work. None of them should hold the keys.</p>
+
+      <p>Here's how OpenSeed uses Janee to give each agent exactly the API access it needs, with full isolation, audit logging, and zero credential exposure.</p>
+
+      <h2>The problem: multiple agents, shared secrets</h2>
+
+      <p>OpenSeed runs multiple creatures concurrently. One files GitHub issues. Another commits code. Future creatures will need Stripe, analytics, and other APIs.</p>
+
+      <p>The obvious approach &mdash; inject API keys as environment variables &mdash; breaks down fast at this scale. Every creature would see every key. There's no audit trail per agent. And a single prompt injection could exfiltrate credentials in one tool call.</p>
+
+      <p>They needed per-agent isolation with centralized credential management. That's what Janee provides.</p>
+
+      <h2>Architecture: Janee as a shared credential proxy</h2>
+
+      <p>OpenSeed's orchestrator spawns Janee once as a child process in HTTP mode. Each creature connects over MCP and gets its own isolated session:</p>
+
+      <pre><code>┌──────────┐     MCP/HTTP    ┌────────┐    real creds   ┌──────────┐
+│ Creature │ ──────────────&gt; │ Janee  │ ──────────────&gt; │ External │
+│          │                 │        │   proxied req   │   API    │
+└──────────┘                 └────────┘                 └──────────┘
+   no keys              encrypted at rest               GitHub, etc.</code></pre>
+
+      <p>Janee creates a fresh Server and Transport instance per MCP <code>initialize</code> handshake, following the <a href="https://github.com/modelcontextprotocol/typescript-sdk">official MCP SDK pattern</a>. Creature A's session state, identity, and access decisions are completely isolated from Creature B's. No shared state, no cross-talk.</p>
+
+      <h2>Agent identity via MCP &mdash; no custom plumbing</h2>
+
+      <p>With multiple agents hitting the same Janee instance, identity matters. Which creature is making this request?</p>
+
+      <p>Early prototypes used custom HTTP headers (<code>X-Agent-ID</code>), but that's security theater &mdash; any client can set any header. OpenSeed landed on something simpler: the MCP protocol's built-in <code>initialize</code> handshake, where clients send <code>clientInfo.name</code>.</p>
+
+      <p>Each creature sets this to <code>creature:{name}</code> when it opens a session. Janee captures it from the transport layer &mdash; not from tool arguments the client controls:</p>
+
+      <pre><code>const transport = new StreamableHTTPClientTransport(url);
+await client.connect(transport);
+// clientInfo.name = "creature:secure" sent during initialize</code></pre>
+
+      <p>This works identically across stdio, HTTP, and in-memory transports. No extra headers, no extra arguments. Just MCP.</p>
+
+      <h2>Least privilege by default</h2>
+
+      <p>With identity resolved, access control is a config file away. In OpenSeed's <code>~/.janee/config.yaml</code>:</p>
+
+      <pre><code>server:
+  defaultAccess: restricted
+
+capabilities:
+  secure-seed:
+    service: secure-seed
+    allowedAgents: ["creature:secure"]
+    autoApprove: true</code></pre>
+
+      <p><code>defaultAccess: restricted</code> means capabilities without an explicit <code>allowedAgents</code> list are hidden from all agents. The <code>secure-seed</code> capability &mdash; backed by a GitHub App with repo access to <code>openseed-dev/openseed</code> &mdash; is only visible to <code>creature:secure</code>. Other creatures calling <code>list_services</code> won't even know it exists.</p>
+
+      <p>If a creature creates a credential at runtime via Janee's <code>manage_credential</code> tool, it defaults to agent-only &mdash; only the creating agent can use it. Isolation is the default, not an opt-in.</p>
+
+      <h2>The real flow: filing a GitHub issue</h2>
+
+      <p>OpenSeed's "Secure" creature audits the codebase for security issues. When it finds something, it needs to create a GitHub issue &mdash; which requires authenticating as a GitHub App installation. Here's the end-to-end flow:</p>
+
+      <ol>
+        <li>A GitHub App (<code>secure-seed</code>) is created with repo access to <code>openseed-dev/openseed</code></li>
+        <li>The app's credentials (App ID, private key, installation ID) are stored in Janee, encrypted at rest with AES-256-GCM</li>
+        <li><code>config.yaml</code> maps a <code>secure-seed</code> capability to this app, restricted to <code>creature:secure</code></li>
+        <li>When Secure finds an issue, it calls <code>execute</code>:</li>
+      </ol>
+
+      <pre><code>await janee({
+  action: 'execute',
+  capability: 'secure-seed',
+  method: 'POST',
+  path: '/repos/openseed-dev/openseed/issues',
+  body: JSON.stringify({
+    title: 'Security finding',
+    body: '...'
+  })
+});</code></pre>
+
+      <p>Janee looks up the capability, decrypts the GitHub App private key, mints a short-lived installation token (1 hour TTL), injects it into the request, and proxies to GitHub. The creature never touches the key. Janee logs the request. If something goes wrong, you revoke access in one place.</p>
+
+      <h2>What this pattern enables</h2>
+
+      <p>By putting Janee between agents and APIs, OpenSeed gets properties that would be painful to build from scratch:</p>
+
+      <ul>
+        <li><strong>Per-agent credential isolation</strong> &mdash; each creature sees only the capabilities it's been granted</li>
+        <li><strong>Centralized rotation</strong> &mdash; update a key in Janee, every creature keeps working with zero code changes</li>
+        <li><strong>Audit trail per agent</strong> &mdash; every proxied request is logged with the agent identity, timestamp, path, and response status</li>
+        <li><strong>Prompt injection resilience</strong> &mdash; even if an attacker hijacks a creature's reasoning, it can't access APIs outside its allowed capability set</li>
+        <li><strong>GitHub App token minting</strong> &mdash; Janee handles the App &rarr; installation token flow automatically, so agents work with short-lived credentials</li>
+      </ul>
+
+      <h2>Getting started with the same pattern</h2>
+
+      <p>If you're building a multi-agent system and want the same setup:</p>
+
+      <pre><code>npm install -g @true-and-useful/janee
+janee init
+janee add my-service         # store credentials
+janee serve --http 3456      # start in HTTP mode for multi-agent</code></pre>
+
+      <p>Set <code>defaultAccess: restricted</code> in your config, define capabilities with <code>allowedAgents</code>, and have each agent identify itself via <code>clientInfo.name</code> during the MCP handshake. That's it &mdash; per-agent isolation with no custom auth code.</p>
+
+      <div class="blog-cta">
+        <h3>Try Janee</h3>
+        <p>Give your AI agents secure, scoped API access &mdash; without exposing your secrets.</p>
+        <a href="https://github.com/rsdouglas/janee" class="btn">View on GitHub &rarr;</a>
+      </div>
+    </article>
+  </div>
+
+  <footer>
+    <div class="container">
+      <p><a href="https://trueanduseful.com">True and Useful LLC</a> &middot; <a href="https://github.com/rsdouglas/janee">Open Source</a> &middot; <a href="https://x.com/rsdgls">@rsdgls</a> &middot; MIT License</p>
+    </div>
+  </footer>
+</body>
+</html>
