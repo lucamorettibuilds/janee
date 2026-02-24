@@ -50,6 +50,16 @@ janee serve
 - Send Slack messages and edit Notion (requires approval + reason)
 - Destructive operations (delete, archive) always blocked
 
+### [`devops-exec-mode.yaml`](./devops-exec-mode.yaml)
+
+**Use case:** AI agent managing AWS, Terraform, and GitHub through CLI tools (exec mode).
+
+- AWS CLI with injected credentials — agent never sees access keys
+- Terraform plan auto-approved, apply requires manual approval
+- GitHub CLI and git with auto-configured HTTPS auth
+- Separate read/write capabilities with different TTLs and approval policies
+- Full audit trail of every command executed
+
 ## Key Concepts
 
 **Services** define your API connections — base URL + authentication.
@@ -70,6 +80,26 @@ rules:
 - `"2m"` — 2 minutes (good for writes)
 - `"10m"` — 10 minutes (good for reads)
 - `"1h"` — 1 hour (use sparingly)
+
+**Exec mode** wraps CLI tools instead of proxying HTTP requests:
+```yaml
+capabilities:
+  aws-readonly:
+    service: aws
+    mode: exec
+    allowCommands: [aws]
+    env:
+      AWS_ACCESS_KEY_ID: "{{credential}}"
+    autoApprove: true
+    ttl: "10m"
+```
+
+Key exec-mode fields:
+- `mode: exec` — CLI wrapper instead of HTTP proxy
+- `allowCommands` — whitelist of allowed executables (security critical)
+- `env` — map credentials to environment variables (`{{credential}}` = the service key)
+- `workDir` — working directory for the subprocess
+- `timeout` — max execution time in ms (default: 30000)
 
 ## Auth Types
 

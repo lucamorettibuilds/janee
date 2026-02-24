@@ -1,0 +1,177 @@
+# DevOps Exec Mode — AI agents run CLI tools without seeing credentials
+#
+# Exec mode is Janee's killer feature for infrastructure automation.
+# Instead of proxying HTTP requests, Janee spawns CLI processes with
+# credentials injected as environment variables. The agent never sees
+# the actual secrets, and Janee scrubs them from stdout/stderr.
+#
+# Use case: An AI agent manages your AWS/GCP/k8s infrastructure
+# through terraform, aws cli, kubectl, and gh — with full audit trail
+# and zero credential exposure.
+#
+# Setup:
+#   janee init
+#   janee add aws --exec --key "AKIAIOSFODNN7EXAMPLE" \
+#     --allow-commands "aws" --env-map "AWS_ACCESS_KEY_ID={{credential}}"
+#   janee add aws-secret --exec --key "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY" \
+#     --allow-commands "aws" --env-map "AWS_SECRET_ACCESS_KEY={{credential}}"
+#   janee add terraform-cloud --exec --key "your-tf-cloud-token" \
+#     --allow-commands "terraform" --env-map "TF_TOKEN_app_terraform_io={{credential}}"
+#   janee add github-cli --exec --key "ghp_yourtoken" \
+#     --allow-commands "gh,git" --env-map "GH_TOKEN={{credential}}"
+#   janee serve
+
+services:
+  # Each service holds one encrypted credential.
+  # Exec-mode capabilities reference these by name.
+  aws:
+    baseUrl: https://aws.amazon.com  # Not used for exec, but required field
+    auth:
+      type: bearer
+      key: "AKIAIOSFODNN7EXAMPLE"  # AWS Access Key ID (encrypted at rest)
+
+  aws-secret:
+    baseUrl: https://aws.amazon.com
+    auth:
+      type: bearer
+      key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"  # AWS Secret (encrypted)
+
+  terraform-cloud:
+    baseUrl: https://app.terraform.io
+    auth:
+      type: bearer
+      key: "your-tf-cloud-token"  # Terraform Cloud API token (encrypted)
+
+  github-cli:
+    baseUrl: https://api.github.com
+    auth:
+      type: bearer
+      key: "ghp_yourtoken"  # GitHub PAT (encrypted)
+
+capabilities:
+  # --- AWS CLI ---
+  # Read-only AWS operations auto-approved; write operations need approval.
+
+  aws-readonly:
+    service: aws
+    mode: exec
+    description: "Run read-only AWS CLI commands"
+    allowCommands: [aws]
+    env:
+      AWS_ACCESS_KEY_ID: "{{credential}}"        # from 'aws' service
+      # For multi-credential, configure a second capability or use extraCredentials
+      AWS_DEFAULT_REGION: "us-east-1"
+    autoApprove: true
+    ttl: "10m"
+
+  aws-write:
+    service: aws
+    mode: exec
+    description: "Run AWS CLI write commands (requires approval)"
+    allowCommands: [aws]
+    env:
+      AWS_ACCESS_KEY_ID: "{{credential}}"
+      AWS_DEFAULT_REGION: "us-east-1"
+    autoApprove: false
+    requiresReason: true
+    ttl: "2m"
+
+  # --- Terraform ---
+  # Plan is safe (no state changes). Apply requires approval.
+
+  terraform-plan:
+    service: terraform-cloud
+    mode: exec
+    description: "Run terraform plan, init, validate, fmt"
+    allowCommands: [terraform]
+    env:
+      TF_TOKEN_app_terraform_io: "{{credential}}"
+      TF_IN_AUTOMATION: "true"
+    autoApprove: true
+    ttl: "5m"
+    workDir: "/workspace/infra"
+
+  terraform-apply:
+    service: terraform-cloud
+    mode: exec
+    description: "Run terraform apply (destructive — requires approval)"
+    allowCommands: [terraform]
+    env:
+      TF_TOKEN_app_terraform_io: "{{credential}}"
+      TF_IN_AUTOMATION: "true"
+    autoApprove: false
+    requiresReason: true
+    ttl: "2m"
+    timeout: 120000  # 2 minutes for long applies
+
+  # --- GitHub CLI + Git ---
+  # gh and git share the same token via GH_TOKEN.
+  # Janee auto-creates a GIT_ASKPASS script for HTTPS auth.
+
+  github-ops:
+    service: github-cli
+    mode: exec
+    description: "Run gh CLI and git commands"
+    allowCommands: [gh, git]
+    env:
+      GH_TOKEN: "{{credential}}"
+    autoApprove: true
+    ttl: "5m"
+
+  # --- HTTP proxy capability (for direct API calls) ---
+
+  github-api:
+    service: github-cli
+    description: "Read and create GitHub issues via API"
+    autoApprove: true
+    ttl: "5m"
+    rules:
+      allow:
+        - "GET /repos/*/issues**"
+        - "POST /repos/*/issues"
+        - "PATCH /repos/*/issues/*"
+      deny:
+        - "DELETE /**"
+
+# How agents use exec mode:
+#
+#   // Agent lists available capabilities
+#   janee_list_services() → ["aws-readonly", "terraform-plan", "github-ops", ...]
+#
+#   // Agent runs a command
+#   janee_exec({
+#     capability: "aws-readonly",
+#     command: ["aws", "ec2", "describe-instances", "--region", "us-east-1"]
+#   })
+#
+#   // Terraform plan
+#   janee_exec({
+#     capability: "terraform-plan",
+#     command: ["terraform", "plan", "-out=tfplan"]
+#   })
+#
+#   // Git push (GIT_ASKPASS auto-configured)
+#   janee_exec({
+#     capability: "github-ops",
+#     command: ["git", "push", "origin", "main"],
+#     cwd: "/workspace/my-repo"
+#   })
+#
+# What Janee does:
+# 1. Validates the command against allowCommands
+# 2. Injects credentials as environment variables
+# 3. Spawns the process in an isolated environment
+# 4. Scrubs credential values from stdout/stderr
+# 5. Returns the (scrubbed) output to the agent
+# 6. Logs everything for audit trail
+#
+# The agent NEVER sees AWS keys, Terraform tokens, or GitHub PATs.
+
+# Security best practices:
+#
+# - Keep allowCommands minimal — only the exact binaries needed
+# - Use separate capabilities for read vs write (different autoApprove)
+# - Set short TTLs for write capabilities (2m)
+# - Use requiresReason: true for destructive operations
+# - Set timeouts to prevent runaway processes
+# - Janee scrubs credentials from output, but keep TTLs short anyway
