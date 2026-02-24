@@ -351,6 +351,8 @@ export async function serveMCPCommand(options: ServeMCPOptions = {}): Promise<vo
     };
 
     // Start server with selected transport
+    let reloadConfigFn: (() => boolean) | undefined;
+
     if (transport === 'http') {
       const runnerKey = options.runnerKey || process.env.JANEE_RUNNER_KEY;
       const isAuthority = runnerKey && !options.authority;
@@ -371,7 +373,40 @@ export async function serveMCPCommand(options: ServeMCPOptions = {}): Promise<vo
         } : {}),
       });
     } else {
-      await startMCPServer(serverOptions);
+      const result = await startMCPServer(serverOptions);
+      reloadConfigFn = result.reloadConfig;
+    }
+
+    // SIGHUP handler: reload config without restarting the process.
+    // Usage: kill -HUP <pid>
+    // This allows infrastructure tooling (systemd, process managers) to trigger
+    // a config reload from outside the MCP session.
+    if (hasYAMLConfig()) {
+      process.on('SIGHUP', () => {
+        console.error('[janee] SIGHUP received — reloading configuration...');
+        try {
+          const result = loadConfigForMCP();
+
+          // For stdio mode: update the running server's internal state
+          if (reloadConfigFn) {
+            reloadConfigFn();
+          }
+
+          // Update serverOptions so new HTTP sessions pick up changes
+          serverOptions.capabilities = result.capabilities;
+          serverOptions.services = result.services;
+
+          // Update the mutable services reference for exec handler
+          currentServices = result.services;
+          console.error(
+            `[janee] Config reloaded: ${result.capabilities.length} capabilities, ${result.services.size} services`
+          );
+        } catch (error) {
+          console.error(
+            `[janee] Config reload failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+          );
+        }
+      });
     }
 
   } catch (error) {

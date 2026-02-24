@@ -157,6 +157,8 @@ export interface MCPServerResult {
   server: Server;
   /** Per-session clientInfo.name storage. Populated by captureClientInfo(). */
   clientSessions: Map<string, string>;
+  /** Programmatic config reload (used by SIGHUP handler). Returns true on success. */
+  reloadConfig?: () => boolean;
 }
 
 /**
@@ -716,7 +718,19 @@ export function createMCPServer(options: MCPServerOptions): MCPServerResult {
     }
   });
 
-  return { server, clientSessions };
+  // Build reloadConfig function if onReloadConfig is provided
+  const reloadConfig = onReloadConfig ? () => {
+    try {
+      const result = onReloadConfig();
+      capabilities = result.capabilities;
+      services = result.services;
+      return true;
+    } catch {
+      return false;
+    }
+  } : undefined;
+
+  return { server, clientSessions, reloadConfig };
 }
 
 /**
@@ -790,13 +804,14 @@ export function captureClientInfo(
 /**
  * Start MCP server with stdio transport (single session).
  */
-export async function startMCPServer(serverOptions: MCPServerOptions): Promise<void> {
-  const { server, clientSessions } = createMCPServer(serverOptions);
+export async function startMCPServer(serverOptions: MCPServerOptions): Promise<MCPServerResult> {
+  const result = createMCPServer(serverOptions);
   const transport = new StdioServerTransport();
-  await server.connect(transport);
-  captureClientInfo(transport, clientSessions);
+  await result.server.connect(transport);
+  captureClientInfo(transport, result.clientSessions);
 
   console.error('Janee MCP server started (stdio)');
+  return result;
 }
 
 /** Handle returned by startMCPServerHTTP for lifecycle management. */
