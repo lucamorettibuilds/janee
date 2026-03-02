@@ -1,4 +1,4 @@
-# RFC 0006: Integration Plugins & SQLite Config Store
+# RFC 0006: Identity Plugins & SQLite Config Store
 
 **Status:** Draft  
 **Author:** Luca Moretti (@lucamorettibuilds)  
@@ -7,7 +7,9 @@
 
 ## Summary
 
-Extend Janee's plugin architecture with **Integration Plugins** for credential lifecycle management (create, rotate, test, revoke) alongside the existing **Secrets Provider** plugins. Replace the YAML config store with SQLite for atomic writes, schema enforcement, and cleaner encrypted data handling.
+Extend Janee's plugin architecture with **Identity Plugins** — plugins that provision and manage agent identities on external systems (GitHub Apps, Slack Bots, GCP service accounts, etc.). This complements the existing **Secrets Provider** plugins: providers answer "where do secrets live?" while identity plugins answer "how does an agent get its own identity on a platform?"
+
+Additionally, replace the YAML config store with SQLite for atomic writes, schema enforcement, and cleaner encrypted data handling.
 
 ## Motivation
 
@@ -17,7 +19,7 @@ Janee's current plugin system (RFC 0005) handles secrets **storage and retrieval
 
 Real-world example: GitHub App authentication requires a multi-step OAuth-like flow (manifest registration → redirect → callback → extract PEM/app ID/installation ID). This is a credential **onboarding** flow, fundamentally different from reading a secret from Vault.
 
-Currently, integrating tools like openseed have to build these flows themselves, tightly coupled to their UI. With integration plugins, Janee handles the credential lifecycle and any frontend (CLI, dashboard, API) can trigger it.
+Currently, integrating tools like openseed have to build these flows themselves, tightly coupled to their UI. With identity plugins, Janee handles the credential lifecycle and any frontend (CLI, dashboard, API) can trigger it.
 
 ### The YAML config pain
 
@@ -31,9 +33,30 @@ As discussed in [#98](https://github.com/rsdouglas/janee/issues/98), the YAML co
 
 The CLI already mediates all config access. Nobody edits `janee.yaml` by hand. SQLite is the natural backend.
 
+### Identity provisioning: a missing primitive
+
+Through design discussion ([openseed #86](https://github.com/openseed-dev/openseed/issues/86)), we identified that what agents need isn't just secrets management — they need **identity provisioning**. The ability to create their own presence on external platforms:
+
+| Service | Creation Method | Browser Required? | Ongoing Auth | Refresh Needed? |
+|---------|----------------|-------------------|-------------|-----------------|
+| GitHub App | Manifest redirect | Yes (approval) | Installation token (JWT→token) | Yes (1hr) |
+| Slack Bot | Manifest redirect | Yes (approval) | Bot token | No (long-lived) |
+| Discord Bot | Manual + OAuth | Partial | Bot token | No (long-lived) |
+| GCP Service Acct | REST API | No | JWT self-signed | Yes (1hr) |
+| Linear/Jira | OAuth2 | Yes (consent) | Access token | Yes (refresh) |
+| Email (SendGrid) | REST API | No | API key | No |
+
+Two distinct plugin shapes emerge:
+
+- **Type A — Manifest/OAuth flow (browser-in-the-loop):** GitHub, Slack, Discord, Linear. User clicks through an approval page. The plugin provides a redirect URL and handles the callback.
+- **Type B — API-only provisioning:** GCP, SendGrid, Twilio. Fully automated via REST. No browser needed.
+
+Both types produce the same output: credentials that Janee stores and manages.
+
+
 ## Design
 
-### Part 1: Integration Plugins
+### Part 1: Identity Plugins
 
 #### Interface
 
@@ -43,7 +66,7 @@ The CLI already mediates all config access. Nobody edits `janee.yaml` by hand. S
  * They handle creation, testing, rotation, and revocation
  * of credentials for external services.
  */
-interface IntegrationPlugin {
+interface IdentityPlugin {
   /** Unique plugin name, e.g. "github-app" */
   readonly name: string;
 
@@ -118,10 +141,10 @@ interface TestResult {
 #### Registration
 
 ```typescript
-import { registerIntegration, getIntegration } from '@true-and-useful/janee';
+import { registerIdentityPlugin, getIntegration } from '@true-and-useful/janee';
 
 // Built-in integrations ship with janee
-registerIntegration('github-app', new GitHubAppIntegration());
+registerIdentityPlugin('github-app', new GitHubAppIdentityPlugin());
 
 // External integrations can be loaded from npm packages
 // janee discovers packages matching `janee-integration-*` pattern
@@ -129,7 +152,7 @@ registerIntegration('github-app', new GitHubAppIntegration());
 
 #### Plugin discovery
 
-Janee loads integration plugins at startup:
+Janee loads identity plugins at startup:
 
 1. **Built-in**: Bundled in `src/integrations/` — ship with janee core
 2. **External**: npm packages matching `janee-integration-*` or `@*/janee-integration-*`
@@ -202,7 +225,7 @@ CREATE TABLE service_auth (
   service_name TEXT PRIMARY KEY REFERENCES services(name) ON DELETE CASCADE,
   config_encrypted BLOB NOT NULL,         -- AES-256-GCM encrypted JSON
   provider_uri TEXT,                       -- optional: resolve from provider instead
-  integration TEXT                         -- which integration plugin created this
+  integration TEXT                         -- which identity plugin created this
 );
 
 -- Capabilities (replaces YAML capabilities block)
@@ -337,7 +360,7 @@ class SqliteConfigStore implements ConfigStore { ... }  // new default
 ### Part 3: GitHub App Integration Plugin (first plugin)
 
 ```typescript
-class GitHubAppIntegration implements IntegrationPlugin {
+class GitHubAppIdentityPlugin implements IdentityPlugin {
   readonly name = 'github-app';
   readonly description = 'Create and manage GitHub App credentials via manifest flow';
   
@@ -427,7 +450,7 @@ class GitHubAppIntegration implements IntegrationPlugin {
 4. Keep `YamlConfigStore` for backward compatibility (deprecated)
 
 ### Phase 3: Integration plugins
-1. `IntegrationPlugin` interface and registry
+1. `IdentityPlugin` interface and registry
 2. HTTP endpoints for setup/callback/test/rotate
 3. CLI commands (`janee integration ...`)
 4. GitHub App as first built-in integration
@@ -458,6 +481,6 @@ class GitHubAppIntegration implements IntegrationPlugin {
 
 ## Open Questions
 
-1. Should integration plugins be able to register their own MCP tools on the server? (The `tools()` method in the interface)
+1. Should identity plugins be able to register their own MCP tools on the server? (The `tools()` method in the interface)
 2. Plugin versioning — how do we handle breaking changes in plugin interfaces?
 3. Should the SQLite database be a single file or split (config.db + audit.db)?
