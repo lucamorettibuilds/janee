@@ -25,7 +25,7 @@ import {
 } from '../core/crypto';
 
 export interface AuthConfig {
-  type: 'bearer' | 'hmac-mexc' | 'hmac-bybit' | 'hmac-okx' | 'headers' | 'service-account' | 'github-app' | 'oauth1a-twitter';
+  type: 'bearer' | 'hmac-mexc' | 'hmac-bybit' | 'hmac-okx' | 'headers' | 'service-account' | 'github-app' | 'oauth1a-twitter' | 'aws-sigv4';
   key?: string;
   apiKey?: string;
   apiSecret?: string;
@@ -40,6 +40,11 @@ export interface AuthConfig {
   consumerSecret?: string;
   accessToken?: string;
   accessTokenSecret?: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+  region?: string;
+  awsService?: string;
+  sessionToken?: string;
 }
 
 export interface ServiceConfig {
@@ -173,6 +178,10 @@ function extractSecrets(auth: AuthConfig): ServiceSecrets {
     if (auth.consumerSecret) secrets.consumerSecret = auth.consumerSecret;
     if (auth.accessToken) secrets.accessToken = auth.accessToken;
     if (auth.accessTokenSecret) secrets.accessTokenSecret = auth.accessTokenSecret;
+  } else if (auth.type === 'aws-sigv4') {
+    if (auth.accessKeyId) secrets.accessKeyId = auth.accessKeyId;
+    if (auth.secretAccessKey) secrets.secretAccessKey = auth.secretAccessKey;
+    if (auth.sessionToken) secrets.sessionToken = auth.sessionToken;
   }
   return secrets;
 }
@@ -191,6 +200,9 @@ function stripSecrets(auth: AuthConfig): AuthConfig {
   delete clean.consumerSecret;
   delete clean.accessToken;
   delete clean.accessTokenSecret;
+  delete clean.accessKeyId;
+  delete clean.secretAccessKey;
+  delete clean.sessionToken;
   return clean;
 }
 
@@ -213,6 +225,10 @@ function injectSecrets(auth: AuthConfig, secrets: ServiceSecrets): void {
     if (typeof secrets.consumerSecret === 'string') auth.consumerSecret = secrets.consumerSecret;
     if (typeof secrets.accessToken === 'string') auth.accessToken = secrets.accessToken;
     if (typeof secrets.accessTokenSecret === 'string') auth.accessTokenSecret = secrets.accessTokenSecret;
+  } else if (auth.type === 'aws-sigv4') {
+    if (typeof secrets.accessKeyId === 'string') auth.accessKeyId = secrets.accessKeyId;
+    if (typeof secrets.secretAccessKey === 'string') auth.secretAccessKey = secrets.secretAccessKey;
+    if (typeof secrets.sessionToken === 'string') auth.sessionToken = secrets.sessionToken;
   }
 }
 

@@ -190,6 +190,45 @@ describe('Config YAML', () => {
       expect(yamlOnDisk).toContain('oauth1a-twitter');
     });
 
+    it('should handle aws-sigv4 auth type', () => {
+      const masterKey = generateMasterKey();
+      const config: JaneeYAMLConfig = {
+        version: '0.3.0',
+        masterKey,
+        server: { port: 9119, host: 'localhost', strictDecryption: true },
+        services: {
+          awsSes: {
+            baseUrl: 'https://email.us-west-2.amazonaws.com',
+            auth: {
+              type: 'aws-sigv4',
+              accessKeyId: 'AKIAEXAMPLE',
+              secretAccessKey: 'wJalrXUtnFEMI/EXAMPLEKEY',
+              region: 'us-west-2',
+              awsService: 'ses',
+            }
+          }
+        },
+        capabilities: {}
+      };
+
+      saveYAMLConfig(config);
+      const loaded = loadYAMLConfig();
+
+      expect(loaded.services.awsSes.auth.type).toBe('aws-sigv4');
+      expect(loaded.services.awsSes.auth.accessKeyId).toBe('AKIAEXAMPLE');
+      expect(loaded.services.awsSes.auth.secretAccessKey).toBe('wJalrXUtnFEMI/EXAMPLEKEY');
+      expect(loaded.services.awsSes.auth.region).toBe('us-west-2');
+      expect(loaded.services.awsSes.auth.awsService).toBe('ses');
+
+      // Secrets should NOT be in YAML, but region/awsService should be
+      const yamlOnDisk = fs.readFileSync(testConfigFile, 'utf8');
+      expect(yamlOnDisk).not.toContain('AKIAEXAMPLE');
+      expect(yamlOnDisk).not.toContain('wJalrXUtnFEMI');
+      expect(yamlOnDisk).toContain('aws-sigv4');
+      expect(yamlOnDisk).toContain('us-west-2');
+      expect(yamlOnDisk).toContain('ses');
+    });
+
     it('should not store non-secret metadata in credentials for github-app', () => {
       const masterKey = generateMasterKey();
       const config: JaneeYAMLConfig = {

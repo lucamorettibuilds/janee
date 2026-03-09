@@ -6,6 +6,12 @@ All notable changes to Janee will be documented in this file.
 
 _(empty)_
 
+## [0.15.0] - 2026-03-09
+
+### Added
+
+- **AWS Signature V4 auth type (`aws-sigv4`)** — New auth type for AWS services (SES, S3, etc.). Janee computes per-request SigV4 signatures (HMAC-SHA256) server-side, keeping `accessKeyId`, `secretAccessKey`, and optional `sessionToken` encrypted at rest. Non-secret fields (`region`, `awsService`) stay in `config.yaml`. Supports `janee add aws-ses` / `janee add aws-s3` (directory templates), `janee service edit --access-key-id/--secret-access-key` for key rotation, and the standard `execute` MCP tool for calling AWS APIs.
+
 ## [0.14.0] - 2026-03-09
 
 ### Added

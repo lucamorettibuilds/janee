@@ -9,7 +9,7 @@ export interface ServiceTemplate {
   description: string;
   baseUrl: string;
   auth: {
-    type: 'bearer' | 'basic' | 'hmac-mexc' | 'hmac-bybit' | 'hmac-okx' | 'headers' | 'service-account' | 'github-app' | 'oauth1a-twitter';
+    type: 'bearer' | 'basic' | 'hmac-mexc' | 'hmac-bybit' | 'hmac-okx' | 'headers' | 'service-account' | 'github-app' | 'oauth1a-twitter' | 'aws-sigv4';
     fields: string[];  // Required fields to prompt for
   };
   /** Lightweight GET path that requires auth — used by `janee test` to verify credentials */
@@ -164,6 +164,26 @@ export const serviceDirectory: ServiceTemplate[] = [
     tags: ['social', 'communication', 'twitter']
   },
   
+  // AWS
+  {
+    name: 'aws-ses',
+    description: 'Amazon Simple Email Service — send and receive email',
+    baseUrl: 'https://email.<region>.amazonaws.com',
+    auth: { type: 'aws-sigv4', fields: ['accessKeyId', 'secretAccessKey', 'region', 'awsService'] },
+    testPath: '/?Action=GetSendQuota',
+    docs: 'https://docs.aws.amazon.com/ses/latest/APIReference/',
+    tags: ['aws', 'email', 'communication']
+  },
+  {
+    name: 'aws-s3',
+    description: 'Amazon S3 — object storage',
+    baseUrl: 'https://s3.<region>.amazonaws.com',
+    auth: { type: 'aws-sigv4', fields: ['accessKeyId', 'secretAccessKey', 'region', 'awsService'] },
+    testPath: '/',
+    docs: 'https://docs.aws.amazon.com/AmazonS3/latest/API/',
+    tags: ['aws', 'storage', 'files']
+  },
+
   // Communication
   {
     name: 'slack',

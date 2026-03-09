@@ -94,6 +94,20 @@ export async function buildAuthHeaders(
       }
     }
 
+  } else if (serviceConfig.auth.type === 'aws-sigv4' && serviceConfig.auth.accessKeyId && serviceConfig.auth.secretAccessKey && serviceConfig.auth.region && serviceConfig.auth.awsService) {
+    const { signAwsSigV4 } = await import('./signing.js');
+    const result: SigningResult = signAwsSigV4({
+      accessKeyId: serviceConfig.auth.accessKeyId,
+      secretAccessKey: serviceConfig.auth.secretAccessKey,
+      region: serviceConfig.auth.region,
+      service: serviceConfig.auth.awsService,
+      method: ctx.method,
+      url: ctx.targetUrl.toString(),
+      body: ctx.body,
+      sessionToken: serviceConfig.auth.sessionToken,
+    });
+    Object.assign(headers, result.headers);
+
   } else if (serviceConfig.auth.type === 'oauth1a-twitter' && serviceConfig.auth.consumerKey && serviceConfig.auth.consumerSecret && serviceConfig.auth.accessToken && serviceConfig.auth.accessTokenSecret) {
     const { signTwitterOAuth1a } = await import('./signing.js');
     const baseUrl = ctx.targetUrl.origin + ctx.targetUrl.pathname;

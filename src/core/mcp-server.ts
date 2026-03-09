@@ -169,7 +169,8 @@ export interface ServiceConfig {
       | "headers"
       | "service-account"
       | "github-app"
-      | "oauth1a-twitter";
+      | "oauth1a-twitter"
+      | "aws-sigv4";
     key?: string;
     apiKey?: string;
     apiSecret?: string;
@@ -184,6 +185,11 @@ export interface ServiceConfig {
     consumerSecret?: string; // For oauth1a-twitter
     accessToken?: string; // For oauth1a-twitter
     accessTokenSecret?: string; // For oauth1a-twitter
+    accessKeyId?: string; // For aws-sigv4
+    secretAccessKey?: string; // For aws-sigv4
+    region?: string; // For aws-sigv4
+    awsService?: string; // For aws-sigv4 (e.g. "ses", "s3")
+    sessionToken?: string; // For aws-sigv4 (temporary credentials)
   };
   /** Auth-required GET path used by `janee test` to verify credentials (e.g. "/v1/balance") */
   testPath?: string;

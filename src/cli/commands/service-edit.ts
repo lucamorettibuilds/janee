@@ -48,6 +48,8 @@ export interface ServiceEditOptions {
   consumerSecret?: string;
   accessToken?: string;
   accessTokenSecret?: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
   json?: boolean;
 }
 
@@ -162,6 +164,17 @@ export async function serviceEditCommand(
       if (auth.type !== 'oauth1a-twitter') return cliError(`--access-token-secret is only applicable to oauth1a-twitter auth`, options.json);
       auth.accessTokenSecret = options.accessTokenSecret;
       changes.push('access token secret rotated');
+    }
+
+    if (options.accessKeyId) {
+      if (auth.type !== 'aws-sigv4') return cliError(`--access-key-id is only applicable to aws-sigv4 auth`, options.json);
+      auth.accessKeyId = options.accessKeyId;
+      changes.push('AWS access key ID rotated');
+    }
+    if (options.secretAccessKey) {
+      if (auth.type !== 'aws-sigv4') return cliError(`--secret-access-key is only applicable to aws-sigv4 auth`, options.json);
+      auth.secretAccessKey = options.secretAccessKey;
+      changes.push('AWS secret access key rotated');
     }
 
     if (changes.length === 0) {

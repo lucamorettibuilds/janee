@@ -2,7 +2,10 @@
  * Tests for HMAC signing implementations
  */
 
-import { createHmac } from 'crypto';
+import {
+  createHash,
+  createHmac,
+} from 'crypto';
 import {
   describe,
   expect,
@@ -10,6 +13,7 @@ import {
 } from 'vitest';
 
 import {
+  signAwsSigV4,
   signBybit,
   signMEXC,
   signOKX,
@@ -359,6 +363,128 @@ describe('signTwitterOAuth1a', () => {
     };
     const lower = signTwitterOAuth1a({ ...params, method: 'post' });
     const upper = signTwitterOAuth1a({ ...params, method: 'POST' });
+    expect(lower.headers['Authorization']).toBe(upper.headers['Authorization']);
+  });
+});
+
+describe('signAwsSigV4', () => {
+  const baseParams = {
+    accessKeyId: 'AKIAIOSFODNN7EXAMPLE',
+    secretAccessKey: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+    region: 'us-east-1',
+    service: 'ses',
+    timestamp: '20260309T120000Z',
+  };
+
+  it('should produce correct Authorization header format', () => {
+    const result = signAwsSigV4({
+      ...baseParams,
+      method: 'GET',
+      url: 'https://email.us-east-1.amazonaws.com/',
+    });
+
+    expect(result.headers['Authorization']).toMatch(/^AWS4-HMAC-SHA256 /);
+    expect(result.headers['Authorization']).toContain(`Credential=${baseParams.accessKeyId}/20260309/us-east-1/ses/aws4_request`);
+    expect(result.headers['Authorization']).toContain('SignedHeaders=');
+    expect(result.headers['Authorization']).toContain('Signature=');
+    expect(result.headers['X-Amz-Date']).toBe('20260309T120000Z');
+    expect(result.headers['X-Amz-Content-Sha256']).toBeDefined();
+  });
+
+  it('should be deterministic with fixed timestamp', () => {
+    const params = { ...baseParams, method: 'POST', url: 'https://s3.us-east-1.amazonaws.com/bucket', body: 'test' };
+    const r1 = signAwsSigV4(params);
+    const r2 = signAwsSigV4(params);
+    expect(r1.headers['Authorization']).toBe(r2.headers['Authorization']);
+  });
+
+  it('should include session token header when provided', () => {
+    const result = signAwsSigV4({
+      ...baseParams,
+      method: 'GET',
+      url: 'https://s3.us-east-1.amazonaws.com/',
+      sessionToken: 'FwoGZXIvYXdzEBYaDH+EXAMPLE',
+    });
+
+    expect(result.headers['X-Amz-Security-Token']).toBe('FwoGZXIvYXdzEBYaDH+EXAMPLE');
+    expect(result.headers['Authorization']).toContain('x-amz-security-token');
+  });
+
+  it('should not include session token header when absent', () => {
+    const result = signAwsSigV4({
+      ...baseParams,
+      method: 'GET',
+      url: 'https://s3.us-east-1.amazonaws.com/',
+    });
+
+    expect(result.headers['X-Amz-Security-Token']).toBeUndefined();
+    expect(result.headers['Authorization']).not.toContain('x-amz-security-token');
+  });
+
+  it('should sort query parameters for canonical request', () => {
+    const r1 = signAwsSigV4({
+      ...baseParams,
+      method: 'GET',
+      url: 'https://s3.us-east-1.amazonaws.com/?b=2&a=1',
+    });
+    const r2 = signAwsSigV4({
+      ...baseParams,
+      method: 'GET',
+      url: 'https://s3.us-east-1.amazonaws.com/?a=1&b=2',
+    });
+    expect(r1.headers['Authorization']).toBe(r2.headers['Authorization']);
+  });
+
+  it('should compute correct payload hash for body', () => {
+    const body = '{"Action":"ListIdentities"}';
+    const result = signAwsSigV4({
+      ...baseParams,
+      method: 'POST',
+      url: 'https://email.us-east-1.amazonaws.com/',
+      body,
+    });
+    const expectedHash = createHash('sha256').update(body).digest('hex');
+    expect(result.headers['X-Amz-Content-Sha256']).toBe(expectedHash);
+  });
+
+  it('should manually verify the signing key derivation and signature', () => {
+    const result = signAwsSigV4({
+      accessKeyId: 'TESTKEY',
+      secretAccessKey: 'TESTSECRET',
+      region: 'us-west-2',
+      service: 's3',
+      method: 'GET',
+      url: 'https://s3.us-west-2.amazonaws.com/mybucket?prefix=test',
+      timestamp: '20260101T000000Z',
+    });
+
+    // Manually derive signing key
+    const kDate = createHmac('sha256', 'AWS4TESTSECRET').update('20260101').digest();
+    const kRegion = createHmac('sha256', kDate).update('us-west-2').digest();
+    const kService = createHmac('sha256', kRegion).update('s3').digest();
+    const kSigning = createHmac('sha256', kService).update('aws4_request').digest();
+
+    // Extract signature from Authorization header
+    const sigMatch = result.headers['Authorization'].match(/Signature=([0-9a-f]+)/);
+    expect(sigMatch).toBeDefined();
+    const signature = sigMatch![1];
+
+    // Reconstruct canonical request to verify
+    const payloadHash = createHash('sha256').update('').digest('hex');
+    const signedHeaders = 'host;x-amz-content-sha256;x-amz-date';
+    const canonicalHeaders = `host:s3.us-west-2.amazonaws.com\nx-amz-content-sha256:${payloadHash}\nx-amz-date:20260101T000000Z\n`;
+    const canonicalRequest = `GET\n/mybucket\nprefix=test\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
+
+    const stringToSign = `AWS4-HMAC-SHA256\n20260101T000000Z\n20260101/us-west-2/s3/aws4_request\n${createHash('sha256').update(canonicalRequest).digest('hex')}`;
+
+    const expectedSig = createHmac('sha256', kSigning).update(stringToSign).digest('hex');
+    expect(signature).toBe(expectedSig);
+  });
+
+  it('should handle case-insensitive method', () => {
+    const params = { ...baseParams, url: 'https://s3.us-east-1.amazonaws.com/' };
+    const lower = signAwsSigV4({ ...params, method: 'get' });
+    const upper = signAwsSigV4({ ...params, method: 'GET' });
     expect(lower.headers['Authorization']).toBe(upper.headers['Authorization']);
   });
 });

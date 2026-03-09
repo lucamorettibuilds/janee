@@ -82,6 +82,10 @@ export async function addCommand(
     consumerSecret?: string;
     accessToken?: string;
     accessTokenSecret?: string;
+    accessKeyId?: string;
+    secretAccessKey?: string;
+    awsRegion?: string;
+    awsService?: string;
     testPath?: string;
     exec?: boolean;
     allowCommands?: string[];
@@ -215,7 +219,7 @@ export async function addCommand(
     }
 
     let baseUrl: string;
-    let authType: 'bearer' | 'basic' | 'hmac-mexc' | 'hmac-bybit' | 'hmac-okx' | 'headers' | 'service-account' | 'github-app' | 'oauth1a-twitter';
+    let authType: 'bearer' | 'basic' | 'hmac-mexc' | 'hmac-bybit' | 'hmac-okx' | 'headers' | 'service-account' | 'github-app' | 'oauth1a-twitter' | 'aws-sigv4';
 
     if (template) {
       // Use template from directory
@@ -297,6 +301,11 @@ export async function addCommand(
               name: 'oauth1a-twitter — Twitter/X OAuth 1.0a',
               value: 'oauth1a-twitter',
               description: 'OAuth 1.0a per-request signing for Twitter/X API'
+            },
+            {
+              name: 'aws-sigv4 — AWS Signature V4',
+              value: 'aws-sigv4',
+              description: 'AWS SigV4 per-request signing (SES, S3, etc.)'
             },
             {
               name: 'basic — HTTP Basic Auth',
@@ -417,6 +426,29 @@ export async function addCommand(
         consumerSecret: consumerSecret.trim(),
         accessToken: accessToken.trim(),
         accessTokenSecret: accessTokenSecret.trim(),
+      };
+    } else if (authType === 'aws-sigv4') {
+      let accessKeyId = options.accessKeyId;
+      let secretAccessKey = options.secretAccessKey;
+      let awsRegion = options.awsRegion;
+      let awsService = options.awsService;
+
+      if (!accessKeyId) accessKeyId = await getRL().question('AWS Access Key ID: ');
+      if (!secretAccessKey) secretAccessKey = await getRL().question('AWS Secret Access Key: ');
+      if (!awsRegion) awsRegion = await getRL().question('AWS Region (e.g. us-east-1): ');
+      if (!awsService) awsService = await getRL().question('AWS Service (e.g. ses, s3): ');
+
+      if (!accessKeyId || !secretAccessKey || !awsRegion || !awsService) {
+        console.error('❌ Access key ID, secret, region, and service are required for AWS SigV4');
+        process.exit(1);
+      }
+
+      auth = {
+        type: 'aws-sigv4',
+        accessKeyId: accessKeyId.trim(),
+        secretAccessKey: secretAccessKey.trim(),
+        region: awsRegion.trim(),
+        awsService: awsService.trim(),
       };
     } else if (authType === 'service-account') {
       if (!options.json) console.log('\n📋 Service Account Setup');
