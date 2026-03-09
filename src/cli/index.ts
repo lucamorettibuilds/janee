@@ -17,6 +17,13 @@ import {
   capabilityListCommand,
   capabilityRemoveCommand,
 } from './commands/capability';
+import {
+  configGetCommand,
+  configSetCommand,
+} from './commands/config';
+import { diagnoseAccessCommand } from './commands/diagnose';
+import { doctorRunnerCommand } from './commands/doctor';
+import { doctorBundleCommand } from './commands/doctor-bundle';
 import { initCommand } from './commands/init';
 import { listCommand } from './commands/list';
 import { logsCommand } from './commands/logs';
@@ -24,9 +31,11 @@ import { removeCommand } from './commands/remove';
 import { revokeCommand } from './commands/revoke';
 import { searchCommand } from './commands/search';
 import { serveCommand } from './commands/serve';
+import { serviceEditCommand } from './commands/service-edit';
 import { sessionsCommand } from './commands/sessions';
 import { statusCommand } from './commands/status';
 import { testCommand } from './commands/test';
+import { whoamiCommand } from './commands/whoami';
 
 // Read version from package.json
 const packageJsonPath = join(__dirname, '../../package.json');
@@ -78,6 +87,41 @@ program
   .option('-y, --yes', 'Skip confirmation prompt')
   .option('--json', 'Output as JSON')
   .action(removeCommand);
+
+// Service management subcommands
+const service = program.command('service').description('Manage services');
+
+service
+  .command('edit <name>')
+  .description('Edit an existing service (update URL, test path, or rotate secrets)')
+  .option('-u, --url <url>', 'Update base URL')
+  .option('--test-path <path>', 'Update test path')
+  .option('-k, --key <key>', 'Rotate bearer key or HMAC apiKey')
+  .option('--api-secret <secret>', 'Rotate HMAC secret')
+  .option('--passphrase <passphrase>', 'Rotate OKX passphrase')
+  .option('--pem-file <path>', 'Rotate GitHub App private key from PEM file')
+  .option('--credentials-file <path>', 'Rotate service account credentials from JSON file')
+  .option('--key-from-env <var>', 'Read key from environment variable')
+  .option('--secret-from-env <var>', 'Read secret from environment variable')
+  .option('--passphrase-from-env <var>', 'Read passphrase from environment variable')
+  .option('--header <pairs...>', 'Update custom auth headers (name=value)')
+  .option('--json', 'Output as JSON')
+  .action(serviceEditCommand);
+
+// Config get/set
+const configCmd = program.command('config').description('View or update server settings');
+
+configCmd
+  .command('get [key]')
+  .description('Show config value(s)')
+  .option('--json', 'Output as JSON')
+  .action(configGetCommand);
+
+configCmd
+  .command('set <key> <value>')
+  .description('Set a config value (e.g. server.port 9200)')
+  .option('--json', 'Output as JSON')
+  .action(configSetCommand);
 
 program
   .command('serve')
@@ -134,6 +178,44 @@ program
   .action(statusCommand);
 
 program
+  .command('whoami')
+  .description('Show your agent identity and accessible capabilities')
+  .option('--agent <name>', 'Preview access for a specific agent identity')
+  .option('--json', 'Output as JSON')
+  .action(whoamiCommand);
+
+// Diagnostics
+const diagnose = program.command('diagnose').description('Debug access and configuration issues');
+
+diagnose
+  .command('access <capability>')
+  .description('Trace why an agent can or cannot access a capability')
+  .option('--agent <name>', 'Agent ID to evaluate (default: admin/CLI)')
+  .option('--method <method>', 'HTTP method for rules evaluation (e.g., GET, POST)')
+  .option('--path <path>', 'Request path for rules evaluation')
+  .option('--json', 'Output as JSON')
+  .action((capability: string, options: any) => diagnoseAccessCommand(capability, options));
+
+// Doctor
+const doctor = program.command('doctor').description('System health checks');
+
+doctor
+  .command('runner <authority-url>')
+  .description('Check runner-to-authority connectivity, auth, and tool forwarding')
+  .option('--runner-key <key>', 'Runner key (or set JANEE_RUNNER_KEY)')
+  .option('--agent <name>', 'Agent identity to test with (default: doctor-probe)')
+  .option('--json', 'Output as JSON')
+  .action((authorityUrl: string, options: any) => doctorRunnerCommand(authorityUrl, options));
+
+doctor
+  .command('bundle')
+  .description('Export a redacted diagnostics bundle for incident debugging')
+  .option('-o, --output <file>', 'Write bundle to file instead of stdout')
+  .option('--agent <name>', 'Include access summary for this agent')
+  .option('--lines <n>', 'Number of recent denials to include (default: 50)')
+  .action((options: any) => doctorBundleCommand(options));
+
+program
   .command('test [service]')
   .description('Test service connectivity and authentication')
   .option('--timeout <ms>', 'Request timeout in ms (default: 10000)')
@@ -167,6 +249,12 @@ cap
   .option('--no-requires-reason', 'Do not require reason')
   .option('--allow <pattern...>', 'Allow rules (e.g., "GET /v1/*")')
   .option('--deny <pattern...>', 'Deny rules (e.g., "DELETE *")')
+  .option('--allowed-agents <agents...>', 'Restrict to specific agent IDs')
+  .option('--mode <mode>', 'Execution mode: proxy or exec')
+  .option('--allow-commands <cmds...>', 'Allowed executables for exec mode')
+  .option('--env-map <mappings...>', 'Env var mappings (KEY=value or KEY={{credential}})')
+  .option('--work-dir <dir>', 'Working directory for exec mode')
+  .option('--timeout <ms>', 'Execution timeout in ms')
   .option('--json', 'Output as JSON')
   .action(capabilityAddCommand);
 
@@ -181,6 +269,13 @@ cap
   .option('--allow <pattern...>', 'Replace allow rules')
   .option('--deny <pattern...>', 'Replace deny rules')
   .option('--clear-rules', 'Clear all rules')
+  .option('--allowed-agents <agents...>', 'Restrict to specific agent IDs')
+  .option('--clear-agents', 'Remove all agent restrictions')
+  .option('--mode <mode>', 'Execution mode: proxy or exec')
+  .option('--allow-commands <cmds...>', 'Allowed executables for exec mode')
+  .option('--env-map <mappings...>', 'Env var mappings (KEY=value or KEY={{credential}})')
+  .option('--work-dir <dir>', 'Working directory for exec mode')
+  .option('--timeout <ms>', 'Execution timeout in ms')
   .option('--json', 'Output as JSON')
   .action(capabilityEditCommand);
 
