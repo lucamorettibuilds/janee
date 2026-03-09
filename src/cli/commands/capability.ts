@@ -2,7 +2,12 @@
  * Capability management commands
  */
 
-import { loadYAMLConfig, saveYAMLConfig, hasYAMLConfig, CapabilityConfig } from '../config-yaml';
+import {
+  CapabilityConfig,
+  hasYAMLConfig,
+  loadYAMLConfig,
+  saveYAMLConfig,
+} from '../config-yaml';
 
 export async function capabilityListCommand(options: { json?: boolean } = {}): Promise<void> {
   try {
@@ -120,7 +125,7 @@ function parseEnvMap(mappings: string[]): Record<string, string> {
 
 function applyCapabilityOptions(cap: CapabilityConfig, options: CapAddEditOptions): void {
   if (options.allowedAgents) {
-    cap.allowedAgents = options.allowedAgents;
+    cap.allowedAgents = options.allowedAgents.flatMap(a => a.split(',').map(s => s.trim()).filter(Boolean));
   }
   if (options.clearAgents) {
     delete cap.allowedAgents;
