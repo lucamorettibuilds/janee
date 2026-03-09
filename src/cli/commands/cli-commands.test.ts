@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock config-yaml module
-vi.mock('../config-yaml', () => ({
+vi.mock('../config-store', () => ({
   loadYAMLConfig: vi.fn(),
   hasYAMLConfig: vi.fn(),
   saveYAMLConfig: vi.fn(),
@@ -9,7 +9,7 @@ vi.mock('../config-yaml', () => ({
   getAuditDir: vi.fn(() => '/tmp/janee-test/logs'),
 }));
 
-import { loadYAMLConfig, hasYAMLConfig, saveYAMLConfig, getConfigDir } from '../config-yaml';
+import { loadYAMLConfig, hasYAMLConfig, saveYAMLConfig, getConfigDir } from '../config-store';
 import { listCommand } from './list';
 import { removeCommand } from './remove';
 import { searchCommand } from './search';

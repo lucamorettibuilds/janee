@@ -2,7 +2,7 @@
  * Capability management commands
  */
 
-import { loadYAMLConfig, saveYAMLConfig, hasYAMLConfig, CapabilityConfig } from '../config-yaml';
+import { loadYAMLConfig, saveYAMLConfig, hasYAMLConfig, CapabilityConfig } from '../config-store';
 
 export async function capabilityListCommand(options: { json?: boolean } = {}): Promise<void> {
   try {

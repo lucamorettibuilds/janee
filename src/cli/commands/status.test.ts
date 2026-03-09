@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock the config module
-vi.mock('../config-yaml', () => ({
+vi.mock('../config-store', () => ({
   getConfigDir: vi.fn(() => '/home/testuser/.janee'),
   getAuditDir: vi.fn(() => '/home/testuser/.janee/audit'),
   hasYAMLConfig: vi.fn(() => true),
@@ -113,7 +113,7 @@ describe('status command', () => {
   it('should show not initialized when no config', async () => {
     // Re-import with modified mocks
     vi.resetModules();
-    vi.doMock('../config-yaml', () => ({
+    vi.doMock('../config-store', () => ({
       getConfigDir: vi.fn(() => '/home/testuser/.janee'),
       getAuditDir: vi.fn(() => '/home/testuser/.janee/audit'),
       hasYAMLConfig: vi.fn(() => false),

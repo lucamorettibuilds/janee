@@ -34,7 +34,7 @@ import {
   getAuditDir,
   hasYAMLConfig,
   loadYAMLConfig,
-} from '../config-yaml';
+} from '../config-store';
 
 /**
  * Load config and convert to MCP format

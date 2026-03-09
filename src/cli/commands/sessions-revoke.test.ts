@@ -4,11 +4,11 @@ import path from 'path';
 import os from 'os';
 
 // Mock config-yaml module
-vi.mock('../config-yaml', () => ({
+vi.mock('../config-store', () => ({
   getConfigDir: vi.fn(() => '/tmp/janee-test-sessions'),
 }));
 
-import { getConfigDir } from '../config-yaml';
+import { getConfigDir } from '../config-store';
 import { sessionsCommand } from './sessions';
 import { revokeCommand } from './revoke';
 

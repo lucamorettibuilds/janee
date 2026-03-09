@@ -24,12 +24,12 @@ import {
 import type {
   AuthConfig,
   CapabilityConfig,
-} from '../config-yaml';
+} from '../config-store';
 import {
   hasYAMLConfig,
   loadYAMLConfig,
   saveYAMLConfig,
-} from '../config-yaml';
+} from '../config-store';
 
 function resolveEnvVar(varName: string, label: string): string {
   const value = process.env[varName];

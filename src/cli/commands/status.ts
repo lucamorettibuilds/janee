@@ -1,4 +1,4 @@
-import { getConfigDir, getAuditDir, hasYAMLConfig, loadYAMLConfig } from '../config-yaml';
+import { getConfigDir, getAuditDir, hasYAMLConfig, loadYAMLConfig } from '../config-store';
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 

@@ -1,6 +1,6 @@
 import * as readline from 'readline/promises';
 import { stdin as input, stdout as output } from 'process';
-import { loadYAMLConfig, saveYAMLConfig, hasYAMLConfig } from '../config-yaml';
+import { loadYAMLConfig, saveYAMLConfig, hasYAMLConfig } from '../config-store';
 
 export async function removeCommand(serviceName: string, options: { yes?: boolean; json?: boolean } = {}): Promise<void> {
   try {

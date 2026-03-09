@@ -1,6 +1,6 @@
-import { loadYAMLConfig } from '../config-yaml';
+import { loadYAMLConfig } from '../config-store';
 import { AuditLogger } from '../../core/audit';
-import { getAuditDir } from '../config-yaml';
+import { getAuditDir } from '../config-store';
 import { createAuthorityApp, buildAuthorityHooks } from '../../core/authority';
 import { createHash } from 'crypto';
 import http from 'http';

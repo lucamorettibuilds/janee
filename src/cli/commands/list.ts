@@ -1,4 +1,4 @@
-import { loadYAMLConfig, hasYAMLConfig } from '../config-yaml';
+import { loadYAMLConfig, hasYAMLConfig } from '../config-store';
 
 export async function listCommand(options: { json?: boolean } = {}): Promise<void> {
   try {

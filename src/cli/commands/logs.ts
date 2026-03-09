@@ -1,5 +1,5 @@
 import { AuditLogger } from '../../core/audit';
-import { getAuditDir } from '../config-yaml';
+import { getAuditDir } from '../config-store';
 
 export async function logsCommand(options: {
   follow?: boolean;

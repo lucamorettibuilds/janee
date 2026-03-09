@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock dependencies before importing
-vi.mock('../config-yaml', () => ({
+vi.mock('../config-store', () => ({
   loadYAMLConfig: vi.fn(),
   hasYAMLConfig: vi.fn(),
   saveYAMLConfig: vi.fn(),
@@ -22,7 +22,7 @@ vi.mock('@inquirer/prompts', () => ({
   select: vi.fn(),
 }));
 
-import { loadYAMLConfig, hasYAMLConfig, saveYAMLConfig } from '../config-yaml';
+import { loadYAMLConfig, hasYAMLConfig, saveYAMLConfig } from '../config-store';
 import { addCommand } from './add';
 
 const mockLoadYAMLConfig = vi.mocked(loadYAMLConfig);

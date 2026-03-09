@@ -1,4 +1,4 @@
-import { getConfigDir } from '../config-yaml';
+import { getConfigDir } from '../config-store';
 import fs from 'fs';
 import path from 'path';
 
