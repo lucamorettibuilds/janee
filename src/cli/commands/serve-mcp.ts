@@ -29,6 +29,7 @@ import {
   forwardToolCall,
   resetAuthoritySession,
 } from '../../core/runner-proxy.js';
+import { runDoctorChecks } from './doctor';
 import { SessionManager } from '../../core/sessions';
 import {
   getAuditDir,
@@ -134,6 +135,10 @@ export async function serveMCPCommand(options: ServeMCPOptions = {}): Promise<vo
       ...(isRunnerMode ? {
         onForwardToolCall: async (toolName: string, args: Record<string, unknown>, agentId?: string) => {
           return forwardToolCall(options.authority!, agentId || runnerName, toolName, args);
+        },
+        onDoctorRunner: async (agentId?: string) => {
+          const runnerKey = options.runnerKey || process.env.JANEE_RUNNER_KEY;
+          return runDoctorChecks(options.authority!, runnerKey, agentId || runnerName);
         },
       } : {}),
 

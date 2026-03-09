@@ -36,6 +36,7 @@ async function createTestPair(overrides: {
   onPersistOwnership?: (service: string, ownership: CredentialOwnership) => void;
   onForwardToolCall?: (toolName: string, args: Record<string, unknown>, agentId?: string) => Promise<unknown>;
   onExecCommand?: (session: any, cap: Capability, cmd: string[], stdin?: string) => Promise<any>;
+  onDoctorRunner?: (agentId?: string) => Promise<any>;
 } = {}) {
   const capabilities = overrides.capabilities ?? [{
     name: 'test-cap',
@@ -65,6 +66,7 @@ async function createTestPair(overrides: {
     onExecCommand: overrides.onExecCommand,
     onPersistOwnership: overrides.onPersistOwnership,
     onForwardToolCall: overrides.onForwardToolCall,
+    onDoctorRunner: overrides.onDoctorRunner,
   });
 
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -1151,6 +1153,59 @@ describe('MCP Handler Integration — Agent-Scoped Credentials', () => {
         expect.objectContaining({ capability: 'test-cap' }),
         'runner-agent'
       );
+    });
+  });
+
+  describe('doctor (MCP tool)', () => {
+    it('should return doctor results when onDoctorRunner is provided', async () => {
+      const mockDoctor = vi.fn().mockResolvedValue({
+        overall: 'PASS',
+        checks: [
+          { name: 'authority_reachable', status: 'PASS', detail: 'OK' },
+          { name: 'runner_key', status: 'PASS', detail: 'Accepted' },
+        ]
+      });
+
+      const { client } = await createTestPair({
+        clientName: 'test-agent',
+        onDoctorRunner: mockDoctor,
+      });
+
+      const result = await client.callTool({ name: 'doctor', arguments: {} });
+      const parsed = extractJSON(result);
+
+      expect(parsed.overall).toBe('PASS');
+      expect(parsed.checks).toHaveLength(2);
+      expect(mockDoctor).toHaveBeenCalledWith('test-agent');
+    });
+
+    it('should not be available without onDoctorRunner', async () => {
+      const { client } = await createTestPair();
+
+      const tools = await client.listTools();
+      const doctorTool = tools.tools.find((t: any) => t.name === 'doctor');
+      expect(doctorTool).toBeUndefined();
+    });
+
+    it('should not be forwarded in runner mode', async () => {
+      const mockDoctor = vi.fn().mockResolvedValue({
+        overall: 'PASS',
+        checks: [{ name: 'test', status: 'PASS', detail: 'ok' }]
+      });
+      const onForwardToolCall = vi.fn();
+
+      const { client } = await createTestPair({
+        clientName: 'runner-agent',
+        onForwardToolCall,
+        onDoctorRunner: mockDoctor,
+      });
+
+      const result = await client.callTool({ name: 'doctor', arguments: {} });
+      const parsed = extractJSON(result);
+
+      expect(parsed.overall).toBe('PASS');
+      expect(mockDoctor).toHaveBeenCalled();
+      expect(onForwardToolCall).not.toHaveBeenCalled();
     });
   });
 });

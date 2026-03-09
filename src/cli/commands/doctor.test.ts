@@ -63,6 +63,9 @@ describe('janee doctor runner', () => {
       if (tool === 'whoami') {
         return { content: [{ type: 'text', text: JSON.stringify({ agentId: 'doctor-probe' }) }] };
       }
+      if (tool === 'explain_access') {
+        return { content: [{ type: 'text', text: JSON.stringify({ allowed: false }) }] };
+      }
       return { content: [] };
     });
 
@@ -76,6 +79,7 @@ describe('janee doctor runner', () => {
       expect.objectContaining({ name: 'runner_key', status: 'PASS' }),
       expect.objectContaining({ name: 'tool_forwarding', status: 'PASS' }),
       expect.objectContaining({ name: 'identity_parity', status: 'PASS' }),
+      expect.objectContaining({ name: 'explain_access_forwarding', status: 'PASS' }),
     ]));
   });
 
@@ -161,6 +165,7 @@ describe('janee doctor runner', () => {
     mockForward.mockImplementation(async (_url: string, _agent: string, tool: string) => {
       if (tool === 'list_services') return { content: [{ type: 'text', text: '[]' }] };
       if (tool === 'whoami') return { content: [{ type: 'text', text: JSON.stringify({ agentId: 'doctor-probe' }) }] };
+      if (tool === 'explain_access') return { content: [{ type: 'text', text: JSON.stringify({ allowed: false }) }] };
       return { content: [] };
     });
 

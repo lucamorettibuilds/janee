@@ -3,33 +3,46 @@
  * Exposes capabilities to AI agents via Model Context Protocol
  */
 
-import express from "express";
-import { readFileSync } from "fs";
-import http from "http";
-import https from "https";
-import { join } from "path";
-import { URL } from "url";
+import express from 'express';
+import { readFileSync } from 'fs';
+import http from 'http';
+import https from 'https';
+import { join } from 'path';
+import { URL } from 'url';
 
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import {
+  StdioServerTransport,
+} from '@modelcontextprotocol/sdk/server/stdio.js';
+import {
+  StreamableHTTPServerTransport,
+} from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {
   CallToolRequestSchema,
   isInitializeRequest,
   ListToolsRequestSchema,
   Tool,
-} from "@modelcontextprotocol/sdk/types.js";
+} from '@modelcontextprotocol/sdk/types.js';
 
 import {
   canAgentAccess,
   CredentialOwnership,
   resolveAgentIdentity,
-} from "./agent-scope.js";
-import { AuditLogger } from "./audit.js";
-import { ExecResult, validateCommand } from "./exec.js";
-import { ServiceTestResult, testServiceConnection } from "./health.js";
-import { checkRules, Rules } from "./rules.js";
-import { SessionManager } from "./sessions.js";
+} from './agent-scope.js';
+import { AuditLogger } from './audit.js';
+import {
+  ExecResult,
+  validateCommand,
+} from './exec.js';
+import {
+  ServiceTestResult,
+  testServiceConnection,
+} from './health.js';
+import {
+  checkRules,
+  Rules,
+} from './rules.js';
+import { SessionManager } from './sessions.js';
 
 // Read version from package.json
 const packageJsonPath = join(__dirname, "../../package.json");
@@ -226,6 +239,20 @@ export interface MCPServerOptions {
   /** When true, janee_exec is hidden from the tool list. Used in authority/HTTP mode
    * where exec would run in the wrong context. */
   hideExecTool?: boolean;
+  /** Runner diagnostics: when set, the `doctor` MCP tool is available.
+   * Runs locally on the runner to check authority connectivity. */
+  onDoctorRunner?: (agentId?: string) => Promise<DoctorResult>;
+}
+
+export interface DoctorCheckResult {
+  name: string;
+  status: "PASS" | "WARN" | "FAIL";
+  detail: string;
+}
+
+export interface DoctorResult {
+  overall: "PASS" | "WARN" | "FAIL";
+  checks: DoctorCheckResult[];
 }
 
 /**
@@ -502,6 +529,18 @@ export function createMCPServer(options: MCPServerOptions): MCPServerResult {
     }
   };
 
+  // Tool: doctor — runner self-diagnostics (only available in runner mode)
+  const doctorTool: Tool = {
+    name: "doctor",
+    description:
+      "Run runner-to-authority diagnostics. Checks authority reachability, authentication, tool forwarding, and identity parity. Only available when running in runner mode.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  };
+
   // Register tools
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const tools: Tool[] = [
@@ -518,6 +557,9 @@ export function createMCPServer(options: MCPServerOptions): MCPServerResult {
     if (onReloadConfig) {
       tools.push(reloadConfigTool);
     }
+    if (options.onDoctorRunner) {
+      tools.push(doctorTool);
+    }
     return { tools };
   });
 
@@ -526,8 +568,8 @@ export function createMCPServer(options: MCPServerOptions): MCPServerResult {
     const { name, arguments: args } = request.params;
 
     try {
-      // Runner proxy: forward all non-exec tools to the Authority
-      if (onForwardToolCall && name !== "janee_exec") {
+      // Runner proxy: forward all non-exec/non-doctor tools to the Authority
+      if (onForwardToolCall && name !== "janee_exec" && name !== "doctor") {
         const forwardAgentId = resolveAgentFromRequest(extra, args);
         const result = await onForwardToolCall(
           name,
@@ -1241,6 +1283,24 @@ export function createMCPServer(options: MCPServerOptions): MCPServerResult {
                 },
               }, null, 2)
             }]
+          };
+        }
+
+        case "doctor": {
+          if (!options.onDoctorRunner) {
+            throw new Error(
+              "Doctor diagnostics only available in runner mode.",
+            );
+          }
+          const doctorAgentId = resolveAgentFromRequest(extra, args);
+          const doctorResult = await options.onDoctorRunner(doctorAgentId);
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(doctorResult, null, 2),
+              },
+            ],
           };
         }
 

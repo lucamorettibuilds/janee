@@ -2,18 +2,14 @@ import {
   forwardToolCall,
   resetAuthoritySession,
 } from '../../core/runner-proxy';
+import { DoctorCheckResult, DoctorResult } from '../../core/mcp-server';
 
-interface CheckResult {
-  name: string;
-  status: 'PASS' | 'WARN' | 'FAIL';
-  detail: string;
-}
-
-export async function doctorRunnerCommand(
+export async function runDoctorChecks(
   authorityUrl: string,
-  options: { runnerKey?: string; agent?: string; json?: boolean } = {},
-): Promise<void> {
-  const checks: CheckResult[] = [];
+  runnerKey: string | undefined,
+  agentId: string,
+): Promise<DoctorResult> {
+  const checks: DoctorCheckResult[] = [];
   const url = authorityUrl.replace(/\/$/, '');
 
   // 1. Authority health endpoint
@@ -32,7 +28,6 @@ export async function doctorRunnerCommand(
   }
 
   // 2. Runner key authentication
-  const runnerKey = options.runnerKey || process.env.JANEE_RUNNER_KEY;
   if (!runnerKey) {
     checks.push({ name: 'runner_key', status: 'FAIL', detail: 'No runner key provided (use --runner-key or JANEE_RUNNER_KEY)' });
   } else {
@@ -49,7 +44,6 @@ export async function doctorRunnerCommand(
       if (res.status === 401) {
         checks.push({ name: 'runner_key', status: 'FAIL', detail: 'Runner key rejected by authority (401 Unauthorized)' });
       } else if (res.status === 400) {
-        // 400 means auth passed but the request body was invalid — key is good
         checks.push({ name: 'runner_key', status: 'PASS', detail: 'Runner key accepted by authority' });
       } else {
         checks.push({ name: 'runner_key', status: 'PASS', detail: `Runner key accepted (status: ${res.status})` });
@@ -61,7 +55,6 @@ export async function doctorRunnerCommand(
 
   // 3. MCP tool forwarding (list_services)
   resetAuthoritySession();
-  const agentId = options.agent || 'doctor-probe';
   try {
     const result = await forwardToolCall(url, agentId, 'list_services', {});
     const content = (result as any)?.content;
@@ -102,50 +95,59 @@ export async function doctorRunnerCommand(
     checks.push({ name: 'identity_parity', status: 'FAIL', detail: `whoami forwarding failed: ${err.message}` });
   }
 
-  // 5. explain_access (if agent specified)
-  if (options.agent) {
-    try {
-      const result = await forwardToolCall(url, agentId, 'explain_access', { capability: '__probe__', agent: options.agent });
-      const content = (result as any)?.content;
-      if (content && Array.isArray(content) && content.length > 0) {
-        checks.push({ name: 'explain_access_forwarding', status: 'PASS', detail: 'explain_access tool is available on authority' });
-      } else {
-        checks.push({ name: 'explain_access_forwarding', status: 'WARN', detail: 'explain_access returned empty' });
-      }
-    } catch (err: any) {
-      checks.push({ name: 'explain_access_forwarding', status: 'WARN', detail: `explain_access not available: ${err.message}` });
+  // 5. explain_access availability
+  try {
+    const result = await forwardToolCall(url, agentId, 'explain_access', { capability: '__probe__', agent: agentId });
+    const content = (result as any)?.content;
+    if (content && Array.isArray(content) && content.length > 0) {
+      checks.push({ name: 'explain_access_forwarding', status: 'PASS', detail: 'explain_access tool is available on authority' });
+    } else {
+      checks.push({ name: 'explain_access_forwarding', status: 'WARN', detail: 'explain_access returned empty' });
     }
+  } catch (err: any) {
+    checks.push({ name: 'explain_access_forwarding', status: 'WARN', detail: `explain_access not available: ${err.message}` });
   }
 
-  // Output
+  const overall = checks.some(c => c.status === 'FAIL') ? 'FAIL'
+    : checks.some(c => c.status === 'WARN') ? 'WARN' : 'PASS';
+
+  return { overall, checks };
+}
+
+export async function doctorRunnerCommand(
+  authorityUrl: string,
+  options: { runnerKey?: string; agent?: string; json?: boolean } = {},
+): Promise<void> {
+  const runnerKey = options.runnerKey || process.env.JANEE_RUNNER_KEY;
+  const agentId = options.agent || 'doctor-probe';
+  const result = await runDoctorChecks(authorityUrl, runnerKey, agentId);
+
   if (options.json) {
-    const overall = checks.some(c => c.status === 'FAIL') ? 'FAIL'
-      : checks.some(c => c.status === 'WARN') ? 'WARN' : 'PASS';
-    console.log(JSON.stringify({ overall, checks }, null, 2));
+    console.log(JSON.stringify(result, null, 2));
     return;
   }
 
-  const hasPass = checks.filter(c => c.status === 'PASS').length;
-  const hasWarn = checks.filter(c => c.status === 'WARN').length;
-  const hasFail = checks.filter(c => c.status === 'FAIL').length;
-  const overall = hasFail > 0 ? 'FAIL' : hasWarn > 0 ? 'WARN' : 'PASS';
-
+  const url = authorityUrl.replace(/\/$/, '');
   console.log('');
   console.log(`  Runner → Authority diagnostics (${url})`);
   console.log('');
 
-  for (const c of checks) {
+  for (const c of result.checks) {
     const icon = c.status === 'PASS' ? '✓' : c.status === 'WARN' ? '⚠' : '✗';
     console.log(`  ${icon} ${c.name}: ${c.detail}`);
   }
 
+  const hasPass = result.checks.filter(c => c.status === 'PASS').length;
+  const hasWarn = result.checks.filter(c => c.status === 'WARN').length;
+  const hasFail = result.checks.filter(c => c.status === 'FAIL').length;
+
   console.log('');
-  console.log(`  Overall: ${overall} (${hasPass} pass, ${hasWarn} warn, ${hasFail} fail)`);
+  console.log(`  Overall: ${result.overall} (${hasPass} pass, ${hasWarn} warn, ${hasFail} fail)`);
 
   if (hasFail > 0) {
     console.log('');
     console.log('  Remediation:');
-    for (const c of checks.filter(c => c.status === 'FAIL')) {
+    for (const c of result.checks.filter(c => c.status === 'FAIL')) {
       switch (c.name) {
         case 'authority_reachable':
           console.log(`    → Verify the authority is running and the URL is correct.`);
